@@ -299,18 +299,12 @@ function SettingsTab({ config, onSettingsSaved }) {
     for (const [k, v] of Object.entries(preset.values)) {
       newPending[k] = v;
     }
-    // Sync window size with screen resolution to prevent dual-render
-    if (preset.values['0001']) newPending['0037'] = preset.values['0001'];
-    if (preset.values['0002']) newPending['0038'] = preset.values['0002'];
     setPendingWrites(newPending);
   };
 
   const setScreenRes = (w, h) => {
     setPending('0001', w);
     setPending('0002', h);
-    // Keep window size in sync to prevent dual-render
-    setPending('0037', w);
-    setPending('0038', h);
     // Auto-adjust background resolution to maintain matching aspect ratio
     const currentBgW = getValue('0003');
     const currentBgH = getValue('0004');
