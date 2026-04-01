@@ -8,7 +8,9 @@ import AddonsTab from './tabs/AddonsTab';
 import SettingsTab from './tabs/SettingsTab';
 import XIPivotTab from './tabs/XIPivotTab';
 import SetupWizard from './components/SetupWizard';
+import UpdateModal from './components/UpdateModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import { ADDON_CATALOGUE } from './tabs/AddonsTab';
 
 const api = window.xiAPI;
 
@@ -19,6 +21,7 @@ function App() {
   const [launchLog, setLaunchLog] = useState('');
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [addonUpdates, setAddonUpdates] = useState([]);
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [musicTracks, setMusicTracks] = useState([]);
   const [musicIndex, setMusicIndex] = useState(0);
@@ -143,6 +146,17 @@ function App() {
       if (info && !info.upToDate && info.latest) setUpdateInfo(info);
     });
   }, []);
+
+  // Check for addon updates on startup
+  useEffect(() => {
+    if (!api?.checkAddonUpdates || !config?.ashitaPath) return;
+    const communityAddons = ADDON_CATALOGUE.filter(a => a.category === 'Community' && a.repo);
+    api.checkAddonUpdates(communityAddons).then(result => {
+      if (result?.updates?.length > 0) {
+        setAddonUpdates(result.updates);
+      }
+    });
+  }, [config?.ashitaPath]);
 
   // Music player
   const autoPlayedRef = useRef(false);
@@ -419,6 +433,13 @@ function App() {
           config={config}
           updateConfig={updateConfig}
           onComplete={() => setShowWizard(false)}
+        />
+      )}
+      {addonUpdates.length > 0 && !showWizard && (
+        <UpdateModal
+          updates={addonUpdates}
+          ashitaPath={config.ashitaPath}
+          onClose={() => setAddonUpdates([])}
         />
       )}
       <div className="app-body">

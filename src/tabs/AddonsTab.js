@@ -3,7 +3,7 @@ import './AddonsTab.css';
 
 const api = window.xiAPI;
 
-const ADDON_CATALOGUE = [
+export const ADDON_CATALOGUE = [
   // Built-in
   { name: 'aspect', description: 'Handles non-standard aspect ratios not available via in-game config', category: 'Built-in' },
   { name: 'autojoin', description: 'Auto-responds to party invites based on config rules', category: 'Built-in' },
