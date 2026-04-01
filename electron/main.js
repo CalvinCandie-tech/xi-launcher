@@ -30,11 +30,9 @@ async function initStore() {
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
-// Runtime folder — in dev mode, use appData to avoid triggering CRA's file watcher reload
+// Runtime folder — always relative to the app root so bundled files stay in one place
 const appRoot = isDev ? path.join(__dirname, '..') : path.dirname(app.getPath('exe'));
-const runtimeDir = isDev
-  ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'xi-launcher', 'runtime')
-  : path.join(appRoot, 'runtime');
+const runtimeDir = path.join(appRoot, 'runtime');
 const defaultAshitaPath = path.join(runtimeDir, 'ashita');
 const defaultXiloaderPath = path.join(runtimeDir, 'xiloader');
 
