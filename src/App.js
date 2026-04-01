@@ -365,8 +365,8 @@ function App() {
     if (!audioRef.current || audioRef.current.paused) return;
     const audio = audioRef.current;
     const startVol = audio.volume;
-    const steps = 40;
-    const interval = 100; // 4s total fade
+    const steps = 60;
+    const interval = 120; // ~7s total fade
     let step = 0;
     const fade = setInterval(() => {
       step++;
