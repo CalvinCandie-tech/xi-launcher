@@ -1373,9 +1373,23 @@ function registerIPC() {
 
       // GitHub ZIPs extract to a folder like "RepoName-main/" — find it
       const extracted = fs.readdirSync(tmpExtract);
-      const innerDir = extracted.length === 1 && fs.statSync(path.join(tmpExtract, extracted[0])).isDirectory()
+      let innerDir = extracted.length === 1 && fs.statSync(path.join(tmpExtract, extracted[0])).isDirectory()
         ? path.join(tmpExtract, extracted[0])
         : tmpExtract;
+
+      // Some HD packs nest the actual DAT folders (ROM/, ROM2/, etc.) inside a
+      // subfolder. Detect this and unwrap one more level so XIPivot finds the
+      // ROM directories directly inside the overlay folder.
+      const innerContents = fs.readdirSync(innerDir);
+      const subDirs = innerContents.filter(f => fs.statSync(path.join(innerDir, f)).isDirectory());
+      const hasRomDirs = subDirs.some(d => /^ROM\d*$/i.test(d));
+      if (!hasRomDirs && subDirs.length === 1) {
+        const candidate = path.join(innerDir, subDirs[0]);
+        const candidateContents = fs.readdirSync(candidate);
+        if (candidateContents.some(f => /^ROM\d*$/i.test(f))) {
+          innerDir = candidate;
+        }
+      }
 
       sendProgress('copy', 85, 'Copying files to DATs folder...');
 
