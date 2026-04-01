@@ -119,11 +119,6 @@ function App() {
             if (merged[k] !== undefined) snapshot[k] = merged[k];
           }
           try {
-            const reg = await api.readRegistry();
-            snapshot.registryValues = reg.values || {};
-            snapshot.registryPath = reg.regPath;
-          } catch (e) { console.error('Failed to read registry for profile snapshot:', e); }
-          try {
             const pivot = await api.readXIPivotConfig(merged.ashitaPath);
             snapshot.xipivot = {
               overlays: pivot.overlays || [],
@@ -287,12 +282,6 @@ function App() {
     for (const k of PROFILE_KEYS) {
       if (cfg[k] !== undefined) snapshot[k] = cfg[k];
     }
-    // Also save current registry values
-    try {
-      const reg = await api.readRegistry();
-      snapshot.registryValues = reg.values || {};
-      snapshot.registryPath = reg.regPath;
-    } catch (e) { console.error('Failed to read registry for profile save:', e); }
     // Save XIPivot config
     try {
       const pivot = await api.readXIPivotConfig(cfg.ashitaPath);
@@ -321,14 +310,6 @@ function App() {
       }
     }
 
-    // Restore registry values
-    if (snapshot.registryValues && Object.keys(snapshot.registryValues).length > 0) {
-      const targetPath = snapshot.registryPath || 'HKLM\\SOFTWARE\\PlayOnlineUS\\SquareEnix\\FinalFantasyXI';
-      const entries = Object.entries(snapshot.registryValues).map(([key, value]) => ({ key, value }));
-      try {
-        await api.writeRegistryBatch(targetPath, entries);
-      } catch (e) { console.error('Failed to restore registry values:', e); }
-    }
 
     // Restore XIPivot config
     if (snapshot.xipivot) {
