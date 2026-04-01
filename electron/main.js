@@ -1644,9 +1644,89 @@ function registerIPC() {
       try { fs.unlinkSync(tmpZip); } catch (e) { console.error('[install-addon] cleanup', e.message); }
       try { fs.rmSync(tmpExtract, { recursive: true, force: true }); } catch {}
 
+      // Fetch latest commit SHA for version tracking
+      let latestSha = null;
+      try {
+        latestSha = await new Promise((resolve, reject) => {
+          https.get({
+            hostname: 'api.github.com',
+            path: `/repos/${repo}/commits?per_page=1`,
+            headers: { 'User-Agent': 'XI-Launcher' }
+          }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+              try {
+                const commits = JSON.parse(data);
+                resolve(Array.isArray(commits) && commits.length > 0 ? commits[0].sha : null);
+              } catch { resolve(null); }
+            });
+          }).on('error', () => resolve(null));
+        });
+      } catch { /* SHA fetch is best-effort */ }
+
+      if (latestSha && store) {
+        const shas = store.get('addonUpdateSHAs', {});
+        shas[addonName] = { sha: latestSha, repo, subdir: subdir || null };
+        store.set('addonUpdateSHAs', shas);
+      }
+
       return { success: true, message: `${addonName} installed — ${fileCount} files` };
     } catch (e) {
       return { success: false, error: e.message };
+    }
+  });
+
+  // Check for addon updates by comparing stored SHAs against GitHub
+  ipcMain.handle('check-addon-updates', async (_, addonList) => {
+    try {
+      if (!store) return { updates: [] };
+
+      // Enforce 24-hour cooldown
+      const lastCheck = store.get('addonUpdateLastCheck', 0);
+      const now = Date.now();
+      if (now - lastCheck < 24 * 60 * 60 * 1000) {
+        return { updates: [], skipped: true };
+      }
+
+      const shas = store.get('addonUpdateSHAs', {});
+      const updates = [];
+
+      for (const addon of addonList) {
+        const stored = shas[addon.name];
+        if (!stored || !stored.sha) continue;
+
+        try {
+          const remoteSha = await new Promise((resolve, reject) => {
+            https.get({
+              hostname: 'api.github.com',
+              path: `/repos/${addon.repo}/commits?per_page=1`,
+              headers: { 'User-Agent': 'XI-Launcher' }
+            }, (res) => {
+              let data = '';
+              res.on('data', (chunk) => data += chunk);
+              res.on('end', () => {
+                try {
+                  const commits = JSON.parse(data);
+                  resolve(Array.isArray(commits) && commits.length > 0 ? commits[0].sha : null);
+                } catch { resolve(null); }
+              });
+            }).on('error', () => resolve(null));
+          });
+
+          if (remoteSha && remoteSha !== stored.sha) {
+            updates.push({ name: addon.name, repo: addon.repo, subdir: addon.subdir || null });
+          }
+        } catch {
+          // Skip addons that fail to check
+        }
+      }
+
+      store.set('addonUpdateLastCheck', now);
+      return { updates };
+    } catch (e) {
+      console.error('[check-addon-updates]', e.message);
+      return { updates: [], error: e.message };
     }
   });
 }
