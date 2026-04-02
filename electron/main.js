@@ -2563,10 +2563,10 @@ function registerIPC() {
         colourfulness:    { technique: 'Colourfulness@Colourfulness.fx', iniSection: 'Colourfulness.fx', iniKey: 'colourfulness' },
         bloom:            { technique: 'MagicBloom@Bloom.fx', iniSection: 'Bloom.fx', iniKey: 'BloomIntensity' },
         ambientOcclusion: { technique: 'MXAO@MXAO.fx' },
-        vignette:         { technique: 'Vignette@Vignette.fx', iniSection: 'Vignette.fx', iniKey: 'VignetteAmount' },
+        vignette:         { technique: 'Vignette@Vignette.fx', iniSection: 'Vignette.fx', iniKey: 'Amount' },
         filmGrain:        { technique: 'FilmGrain@FilmGrain.fx', iniSection: 'FilmGrain.fx', iniKey: 'Intensity' },
-        depthOfField:     { technique: 'DepthOfField@DepthOfField.fx' },
-        fakeHDR:          { technique: 'FakeHDR@FakeHDR.fx', iniSection: 'FakeHDR.fx', iniKey: 'HDRPower' },
+        depthOfField:     { technique: 'RingDOF@DepthOfField.fx' },
+        fakeHDR:          { technique: 'HDR@FakeHDR.fx', iniSection: 'FakeHDR.fx', iniKey: 'HDRPower' },
         liftGammaGain:    { technique: 'LiftGammaGain@LiftGammaGain.fx' },
       };
 
@@ -2639,10 +2639,10 @@ function registerIPC() {
         { key: 'colourfulness',    match: 'Colourfulness', section: 'Colourfulness.fx', iniKey: 'colourfulness', defaultVal: 0.40 },
         { key: 'bloom',            match: 'Bloom',       section: 'Bloom.fx',       iniKey: 'BloomIntensity',  defaultVal: 0.20 },
         { key: 'ambientOcclusion', match: 'MXAO' },
-        { key: 'vignette',         match: 'Vignette',    section: 'Vignette.fx',    iniKey: 'VignetteAmount',  defaultVal: 0.40 },
+        { key: 'vignette',         match: 'Vignette',    section: 'Vignette.fx',    iniKey: 'Amount',          defaultVal: 0.40 },
         { key: 'filmGrain',        match: 'FilmGrain',   section: 'FilmGrain.fx',   iniKey: 'Intensity',       defaultVal: 0.15 },
-        { key: 'depthOfField',     match: 'DepthOfField' },
-        { key: 'fakeHDR',          match: 'FakeHDR',     section: 'FakeHDR.fx',     iniKey: 'HDRPower',        defaultVal: 0.50 },
+        { key: 'depthOfField',     match: 'RingDOF' },
+        { key: 'fakeHDR',          match: 'HDR',         section: 'FakeHDR.fx',     iniKey: 'HDRPower',        defaultVal: 0.50 },
         { key: 'liftGammaGain',    match: 'LiftGammaGain' },
       ];
 
