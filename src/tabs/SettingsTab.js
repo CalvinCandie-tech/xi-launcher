@@ -218,6 +218,8 @@ const XINPUT_BUTTONS = [
   { id: 14, label: 'Start' }, { id: 15, label: 'Back' },
   { id: 32, label: 'L Stick X' }, { id: 33, label: 'L Stick Y' },
   { id: 35, label: 'R Stick X' }, { id: 36, label: 'R Stick Y' },
+  { id: -32, label: 'L Stick X (Rev)' }, { id: -33, label: 'L Stick Y (Rev)' },
+  { id: -35, label: 'R Stick X (Rev)' }, { id: -36, label: 'R Stick Y (Rev)' },
   { id: -1, label: 'None' }
 ];
 
@@ -240,6 +242,9 @@ const DINPUT_BUTTONS = [
   { id: 32, label: 'L Stick X' }, { id: 33, label: 'L Stick Y' },
   { id: 34, label: 'R Stick X' }, { id: 37, label: 'R Stick Y' },
   { id: 40, label: 'D-Pad X' }, { id: 41, label: 'D-Pad Y' },
+  { id: -32, label: 'L Stick X (Rev)' }, { id: -33, label: 'L Stick Y (Rev)' },
+  { id: -34, label: 'R Stick X (Rev)' }, { id: -37, label: 'R Stick Y (Rev)' },
+  { id: -40, label: 'D-Pad X (Rev)' }, { id: -41, label: 'D-Pad Y (Rev)' },
   { id: -1, label: 'None' }
 ];
 
