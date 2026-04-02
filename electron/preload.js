@@ -145,6 +145,19 @@ contextBridge.exposeInMainWorld('xiAPI', {
   checkDefenderExclusion: (folderPath) => ipcRenderer.invoke('check-defender-exclusion', folderPath),
   removeDgVoodoo: (ffxiPath) => ipcRenderer.invoke('remove-dgvoodoo', ffxiPath),
 
+  // ReShade
+  checkReShade: (ffxiPath) => ipcRenderer.invoke('check-reshade', ffxiPath),
+  downloadReShade: () => ipcRenderer.invoke('download-reshade'),
+  onReShadeProgress: (callback) => {
+    const handler = (_, percent, detail) => callback(percent, detail);
+    ipcRenderer.on('reshade-download-progress', handler);
+    return () => ipcRenderer.removeListener('reshade-download-progress', handler);
+  },
+  installReShade: (ffxiPath) => ipcRenderer.invoke('install-reshade', ffxiPath),
+  toggleReShade: (ffxiPath, enable) => ipcRenderer.invoke('toggle-reshade', ffxiPath, enable),
+  writeReShadeConfig: (ffxiPath, effects) => ipcRenderer.invoke('write-reshade-config', ffxiPath, effects),
+  readReShadeConfig: (ffxiPath) => ipcRenderer.invoke('read-reshade-config', ffxiPath),
+
   // Community addon install
   getPlugins: (ashitaPath) => ipcRenderer.invoke('get-plugins', ashitaPath),
   installAddon: (ashitaPath, addonName, repo, subdir, useRelease, releaseFolder, isPlugin) => ipcRenderer.invoke('install-addon', ashitaPath, addonName, repo, subdir, useRelease, releaseFolder, isPlugin),

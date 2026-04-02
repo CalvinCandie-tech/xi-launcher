@@ -2327,6 +2327,301 @@ function registerIPC() {
     }
   });
 
+  // ── ReShade Setup ──
+
+  function findFileRecursive(dir, filename) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const found = findFileRecursive(fullPath, filename);
+        if (found) return found;
+      } else if (entry.name === filename) {
+        return fullPath;
+      }
+    }
+    return null;
+  }
+
+  function copyDirSync(src, dest) {
+    fs.mkdirSync(dest, { recursive: true });
+    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        copyDirSync(srcPath, destPath);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  }
+
+  ipcMain.handle('check-reshade', async (_, ffxiPath) => {
+    try {
+      validateStoredFfxiPath(ffxiPath);
+      const dllPath = path.join(ffxiPath, 'dxgi.dll');
+      const disabledPath = path.join(ffxiPath, 'dxgi.dll.disabled');
+      const shadersPath = path.join(ffxiPath, 'reshade-shaders');
+      const iniPath = path.join(ffxiPath, 'ReShade.ini');
+      const dgvD3D8 = path.join(ffxiPath, 'D3D8.dll');
+
+      const dllExists = fs.existsSync(dllPath);
+      const disabledExists = fs.existsSync(disabledPath);
+      const installed = dllExists || disabledExists;
+      const enabled = dllExists && !disabledExists;
+      const shadersExist = fs.existsSync(shadersPath);
+      const iniExists = fs.existsSync(iniPath);
+      const dgvReady = fs.existsSync(dgvD3D8);
+
+      return { installed, enabled, shadersExist, iniExists, dgvReady };
+    } catch (e) {
+      return { installed: false, enabled: false, shadersExist: false, iniExists: false, dgvReady: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('download-reshade', async () => {
+    const destDir = path.join(runtimeDir, 'reshade');
+    try {
+      const sendProgress = (percent, detail) => {
+        try { mainWindow?.webContents?.send('reshade-download-progress', percent, detail); } catch {}
+      };
+
+      sendProgress(0, 'Fetching latest release info...');
+
+      const releaseInfo = await new Promise((resolve, reject) => {
+        https.get('https://api.github.com/repos/crosire/reshade/releases/latest', {
+          headers: { 'User-Agent': 'XI-Launcher', 'Accept': 'application/vnd.github.v3+json' }
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            if (res.statusCode !== 200) return reject(new Error(`GitHub API returned ${res.statusCode}`));
+            try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+          });
+          res.on('error', reject);
+        }).on('error', reject);
+      });
+
+      const asset = releaseInfo.assets?.find(a =>
+        a.name.endsWith('.exe') && a.name.includes('Addon')
+      ) || releaseInfo.assets?.find(a =>
+        a.name.endsWith('.exe') && a.name.includes('Setup')
+      );
+      if (!asset) return { success: false, error: 'Could not find ReShade installer in the latest release' };
+
+      sendProgress(5, `Downloading ${asset.name}...`);
+
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+      const tmpFile = path.join(os.tmpdir(), asset.name);
+
+      await new Promise((resolve, reject) => {
+        const download = (url) => {
+          https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
+            if (res.statusCode === 302 || res.statusCode === 301) {
+              return download(res.headers.location);
+            }
+            if (res.statusCode !== 200) {
+              return reject(new Error(`Download failed with status ${res.statusCode}`));
+            }
+            const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+            let receivedBytes = 0;
+            const file = fs.createWriteStream(tmpFile);
+            res.on('data', (chunk) => {
+              receivedBytes += chunk.length;
+              file.write(chunk);
+              const mb = (receivedBytes / 1048576).toFixed(1);
+              if (totalBytes > 0) {
+                const pct = 5 + Math.round((receivedBytes / totalBytes) * 60);
+                const totalMb = (totalBytes / 1048576).toFixed(1);
+                sendProgress(pct, `Downloading... ${mb} / ${totalMb} MB`);
+              } else {
+                sendProgress(Math.min(60, 5 + Math.round(receivedBytes / 50000)), `Downloading... ${mb} MB`);
+              }
+            });
+            res.on('end', () => { file.end(); file.on('finish', resolve); });
+            res.on('error', reject);
+          }).on('error', reject);
+        };
+        download(asset.browser_download_url);
+      });
+
+      sendProgress(70, 'Extracting ReShade DLL...');
+
+      if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
+      fs.mkdirSync(destDir, { recursive: true });
+
+      await extractZip(tmpFile, destDir);
+
+      sendProgress(90, 'Cleaning up...');
+      try { fs.unlinkSync(tmpFile); } catch {}
+
+      const dll32 = path.join(destDir, 'ReShade32.dll');
+      if (!fs.existsSync(dll32)) {
+        const found = findFileRecursive(destDir, 'ReShade32.dll');
+        if (found) {
+          fs.copyFileSync(found, dll32);
+        } else {
+          return { success: false, error: 'Download completed but ReShade32.dll not found. The release structure may have changed.' };
+        }
+      }
+
+      sendProgress(100, 'ReShade downloaded successfully');
+      return { success: true, path: destDir, version: releaseInfo.tag_name || asset.name };
+    } catch (e) {
+      const msg = e.message || '';
+      if (msg.includes('ENOTFOUND') || msg.includes('getaddrinfo')) {
+        return { success: false, error: 'Network error: Could not reach GitHub. Check your internet connection.' };
+      }
+      return { success: false, error: `Download failed: ${msg}` };
+    }
+  });
+
+  ipcMain.handle('install-reshade', async (_, ffxiPath) => {
+    try {
+      validateStoredFfxiPath(ffxiPath);
+      const cacheDir = path.join(runtimeDir, 'reshade');
+      const dll32 = path.join(cacheDir, 'ReShade32.dll');
+
+      if (!fs.existsSync(dll32)) {
+        return { success: false, error: 'ReShade not downloaded yet. Download first.' };
+      }
+
+      fs.copyFileSync(dll32, path.join(ffxiPath, 'dxgi.dll'));
+
+      const srcShaders = path.join(cacheDir, 'reshade-shaders');
+      const destShaders = path.join(ffxiPath, 'reshade-shaders');
+      if (fs.existsSync(srcShaders)) {
+        if (fs.existsSync(destShaders)) fs.rmSync(destShaders, { recursive: true, force: true });
+        copyDirSync(srcShaders, destShaders);
+      }
+
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('toggle-reshade', async (_, ffxiPath, enable) => {
+    try {
+      validateStoredFfxiPath(ffxiPath);
+      const dllPath = path.join(ffxiPath, 'dxgi.dll');
+      const disabledPath = path.join(ffxiPath, 'dxgi.dll.disabled');
+
+      if (enable) {
+        if (fs.existsSync(disabledPath) && !fs.existsSync(dllPath)) {
+          fs.renameSync(disabledPath, dllPath);
+        }
+      } else {
+        if (fs.existsSync(dllPath)) {
+          if (fs.existsSync(disabledPath)) fs.unlinkSync(disabledPath);
+          fs.renameSync(dllPath, disabledPath);
+        }
+      }
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('write-reshade-config', async (_, ffxiPath, effects) => {
+    try {
+      validateStoredFfxiPath(ffxiPath);
+
+      const enabledEffects = [];
+      if (effects.sharpening?.enabled) enabledEffects.push('LumaSharpen.fx');
+      if (effects.saturation?.enabled) enabledEffects.push('Vibrance.fx');
+      if (effects.bloom?.enabled) enabledEffects.push('Bloom.fx');
+      if (effects.filmGrain?.enabled) enabledEffects.push('FilmGrain.fx');
+      if (effects.ambientOcclusion?.enabled) enabledEffects.push('MXAO.fx');
+
+      const lines = [
+        '; ReShade.ini — generated by XI Launcher',
+        '; Do not edit manually — changes will be overwritten',
+        '',
+        '[GENERAL]',
+        'EffectSearchPaths=.\\reshade-shaders\\Shaders',
+        'TextureSearchPaths=.\\reshade-shaders\\Textures',
+        'PreprocessorDefinitions=',
+        `Effects=${enabledEffects.join(',')}`,
+        '',
+        '[LumaSharpen.fx]',
+        `sharp_strength=${(effects.sharpening?.value ?? 0.60).toFixed(2)}`,
+        '',
+        '[Vibrance.fx]',
+        `Vibrance=${(effects.saturation?.value ?? 0.50).toFixed(2)}`,
+        '',
+        '[Bloom.fx]',
+        `BloomIntensity=${(effects.bloom?.value ?? 0.20).toFixed(2)}`,
+        '',
+        '[FilmGrain.fx]',
+        `Intensity=${(effects.filmGrain?.value ?? 0.30).toFixed(2)}`,
+        '',
+        '[MXAO.fx]',
+        '; Ambient occlusion — toggle only, no exposed parameters',
+        '',
+      ];
+
+      fs.writeFileSync(path.join(ffxiPath, 'ReShade.ini'), lines.join('\r\n'), 'utf8');
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('read-reshade-config', async (_, ffxiPath) => {
+    try {
+      validateStoredFfxiPath(ffxiPath);
+      const iniPath = path.join(ffxiPath, 'ReShade.ini');
+      if (!fs.existsSync(iniPath)) return { success: false, error: 'ReShade.ini not found' };
+
+      const content = fs.readFileSync(iniPath, 'utf8');
+      const lines = content.split(/\r?\n/);
+
+      let currentSection = '';
+      const sections = {};
+
+      for (const line of lines) {
+        const sectionMatch = line.match(/^\[(.+)\]$/);
+        if (sectionMatch) {
+          currentSection = sectionMatch[1];
+          sections[currentSection] = {};
+          continue;
+        }
+        const kvMatch = line.match(/^(\w+)\s*=\s*(.*)$/);
+        if (kvMatch && currentSection) {
+          sections[currentSection][kvMatch[1]] = kvMatch[2];
+        }
+      }
+
+      const enabledList = (sections['GENERAL']?.Effects || '').split(',').map(s => s.trim()).filter(Boolean);
+
+      const effects = {
+        sharpening: {
+          enabled: enabledList.includes('LumaSharpen.fx'),
+          value: parseFloat(sections['LumaSharpen.fx']?.sharp_strength) || 0.60,
+        },
+        saturation: {
+          enabled: enabledList.includes('Vibrance.fx'),
+          value: parseFloat(sections['Vibrance.fx']?.Vibrance) || 0.50,
+        },
+        bloom: {
+          enabled: enabledList.includes('Bloom.fx'),
+          value: parseFloat(sections['Bloom.fx']?.BloomIntensity) || 0.20,
+        },
+        filmGrain: {
+          enabled: enabledList.includes('FilmGrain.fx'),
+          value: parseFloat(sections['FilmGrain.fx']?.Intensity) || 0.30,
+        },
+        ambientOcclusion: {
+          enabled: enabledList.includes('MXAO.fx'),
+        },
+      };
+
+      return { success: true, effects };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
   // Community addon install/update from GitHub
   ipcMain.handle('install-addon', async (_, ashitaPath, addonName, repo, subdir, useRelease, releaseFolder, isPlugin) => {
     try {
