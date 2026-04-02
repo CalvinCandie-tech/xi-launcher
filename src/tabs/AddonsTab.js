@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Modal from '../components/Modal';
 import './AddonsTab.css';
 
@@ -13,128 +13,127 @@ const ADDON_CONFLICTS = {
 };
 
 export const ADDON_CATALOGUE = [
-  // Built-in
-  { name: 'actionparse', description: 'Parses and displays incoming action packet information', category: 'Built-in' },
-  { name: 'activemon', description: 'Displays an image on screen showing if the current client is focused', category: 'Built-in' },
-  { name: 'affinity', description: 'Allows setting the current process affinity mask in-game', category: 'Built-in' },
-  { name: 'ahcolors', description: 'Changes the auction house listing colors to be easier to see', category: 'Built-in' },
-  { name: 'ahgo', description: 'Enables opening the AH from anywhere and moving with it open', category: 'Built-in' },
-  { name: 'allmaps', description: 'See every map via /map without needing the key items, including waypoints', category: 'Built-in' },
-  { name: 'aspect', description: 'Handles non-standard aspect ratios not available via in-game config', category: 'Built-in' },
-  { name: 'autojoin', description: 'Auto-responds to party invites based on config rules', category: 'Built-in' },
-  { name: 'autologin', description: 'Automatically logs into a desired character slot', category: 'Built-in' },
-  { name: 'autorespond', description: 'Auto-replies to tells with a configured message when enabled', category: 'Built-in' },
-  { name: 'bgamelog', description: 'Battle log customization with emphasis on combat messages', category: 'Built-in' },
-  { name: 'blucheck', description: 'Helper addon to track learned BLU spells with an in-game UI', category: 'Built-in' },
-  { name: 'blumon', description: 'Monitors for learnt Blue Mage spells and announces them with color', category: 'Built-in' },
-  { name: 'bluesets', description: 'UI for managing Blue Mage spell sets', category: 'Built-in' },
-  { name: 'cartographer', description: 'See every map in the map menus when viewing non-current zone maps', category: 'Built-in' },
-  { name: 'casper', description: 'Remove collision with other players — walk through them like a ghost', category: 'Built-in' },
-  { name: 'cfhblock', description: 'Blocks call for help from working to prevent accidents', category: 'Built-in' },
-  { name: 'chamcham', description: 'Enables coloring models based on their entity type', category: 'Built-in' },
-  { name: 'changecall', description: 'Replaces all call commands with the selected call ID instead', category: 'Built-in' },
-  { name: 'chatfix', description: 'Fixes private server chat issues related to a client update', category: 'Built-in' },
-  { name: 'chatmon', description: 'Plays sounds as a reaction to certain chat and other helpful events', category: 'Built-in' },
-  { name: 'checker', description: 'Displays additional information when using /check on a monster', category: 'Built-in' },
-  { name: 'chime', description: 'Play in-game chime based sound effects from a slash command', category: 'Built-in' },
-  { name: 'cleancs', description: 'Hides Ashita rendered elements while in a cutscene', category: 'Built-in' },
-  { name: 'clearcolor', description: 'Enables modding the background color of the scene', category: 'Built-in' },
-  { name: 'clock', description: 'Allows the player to display various times on screen', category: 'Built-in' },
-  { name: 'config', description: 'Enables slash commands to force-set game settings directly', category: 'Built-in' },
-  { name: 'craftmon', description: 'Tracks crafting skill-ups and synthesis attempts', category: 'Built-in' },
-  { name: 'crosshair', description: 'Draws position helper lines to move Ashita elements on screen', category: 'Built-in' },
-  { name: 'debuff', description: 'Enables cancelling status effects via a command', category: 'Built-in' },
-  { name: 'debuffed', description: 'Shows debuffs applied to your current target mob', category: 'Built-in' },
-  { name: 'distance', description: 'Displays the distance between you and your target', category: 'Built-in' },
-  { name: 'drawdistance', description: 'Slash commands to alter the game scene rendering distances', category: 'Built-in' },
-  { name: 'enternity', description: 'Removes the need to press Enter during cutscenes and dialog', category: 'Built-in' },
-  { name: 'equipmon', description: 'Displays currently equipped items on screen at all times', category: 'Built-in' },
-  { name: 'fastswap', description: 'Fixes a state issue with the client when trying to swap jobs too fast', category: 'Built-in' },
-  { name: 'filterless', description: 'Disables the bad language filter for private servers', category: 'Built-in' },
-  { name: 'filters', description: 'Allows saving and loading chat filter sets with ease', category: 'Built-in' },
-  { name: 'filterscan', description: 'Allows filtering widescan results for specific entities', category: 'Built-in' },
-  { name: 'find', description: 'Search for items across all of your storage containers', category: 'Built-in' },
-  { name: 'fps', description: 'Shows and controls the in-game FPS cap', category: 'Built-in' },
-  { name: 'freemem', description: 'Memory cleanup utility', category: 'Built-in' },
-  { name: 'gateway', description: 'Forces all doors to always be open', category: 'Built-in' },
-  { name: 'hideconsole', description: 'Hides the boot loader console window', category: 'Built-in' },
-  { name: 'hideobs', description: 'Hides the game window from OBS display stream capturing', category: 'Built-in' },
-  { name: 'hideparty', description: 'Slash commands to hide, show, or toggle the party frames', category: 'Built-in' },
-  { name: 'hideui', description: 'Slash commands to hide, show, or toggle Ashita UI elements', category: 'Built-in' },
-  { name: 'ibar', description: 'Displays info about yourself and your current target', category: 'Built-in' },
-  { name: 'ime', description: 'Allows non-Japanese clients to use the Japanese IME and character sets', category: 'Built-in' },
-  { name: 'imguistyle', description: 'Allows per-character customizations to the ImGui style settings', category: 'Built-in' },
-  { name: 'instantah', description: 'Removes the delay from auction house interactions', category: 'Built-in' },
-  { name: 'instantchat', description: 'Removes the delay from adding messages to the chat windows', category: 'Built-in' },
-  { name: 'invmon', description: 'Displays current inventory container space information', category: 'Built-in' },
-  { name: 'itemwatch', description: 'Track and monitor items and key items on-screen', category: 'Built-in' },
-  { name: 'links', description: 'Captures URLs from chat and lets you open them in a browser', category: 'Built-in' },
-  { name: 'logincmd', description: 'Executes a per-character script when logging in or switching characters', category: 'Built-in' },
-  { name: 'logs', description: 'Creates per-character dated log files of all incoming text', category: 'Built-in' },
-  { name: 'lotomatic', description: 'Treasure pool manager — auto lot/pass items', category: 'Built-in' },
-  { name: 'macrofix', description: 'Removes the macro bar delay when pressing CTRL or ALT', category: 'Built-in' },
-  { name: 'mapdot', description: 'Enables seeing enemies on the compass on all jobs', category: 'Built-in' },
-  { name: 'minimap', description: 'Adds a configurable minimap to your screen', category: 'Built-in' },
-  { name: 'minimapmon', description: 'Hides the Minimap plugin under certain conditions like standing still', category: 'Built-in' },
-  { name: 'mipmap', description: 'Removes the recent SE patch that altered mipmap configuration', category: 'Built-in' },
-  { name: 'move', description: 'Window helper to adjust position, size, border, and more', category: 'Built-in' },
-  { name: 'namecolors', description: 'Enables editing the game name color table', category: 'Built-in' },
-  { name: 'nokb', description: 'Disables knockback effects applied to the local player', category: 'Built-in' },
-  { name: 'nomad', description: 'Enables mog house functionality in any zone', category: 'Built-in' },
-  { name: 'noname', description: 'Removes the local player name', category: 'Built-in' },
-  { name: 'onevent', description: 'Reacts to chat based events with customized commands', category: 'Built-in' },
-  { name: 'paranormal', description: 'Enables using nearly any game command while dead/unconscious', category: 'Built-in' },
-  { name: 'peekaboo', description: 'Forces all entities the client obtains data for to be visible', category: 'Built-in' },
-  { name: 'petinfo', description: 'Displays information about the player pet', category: 'Built-in' },
-  { name: 'quicksets', description: 'Removes the delay between equipping different equipment sets', category: 'Built-in' },
-  { name: 'recast', description: 'Displays ability and spell recast times', category: 'Built-in' },
-  { name: 'renamer', description: 'Renames entities with overrides', category: 'Built-in' },
-  { name: 'repeater', description: 'Allows setting a command to be repeated automatically', category: 'Built-in' },
-  { name: 'seekhelp', description: 'Alternative /sea interface with advanced filtering', category: 'Built-in' },
-  { name: 'sexchange', description: 'Allows changing the player race and hair style with commands', category: 'Built-in' },
-  { name: 'shorthand', description: 'Write shortcuts for casting spells, JAs, weapon skills', category: 'Built-in' },
-  { name: 'singlerace', description: 'Changes all player and NPC models to a single race/hair style', category: 'Built-in' },
-  { name: 'skeletonkey', description: 'Enables the ability to force closed doors open', category: 'Built-in' },
-  { name: 'stepdialog', description: 'Manually invoke the key press to continue the current chat dialog', category: 'Built-in' },
-  { name: 'stfu', description: 'Blocks spam system messages and converts annoying macro sounds', category: 'Built-in' },
-  { name: 'timestamp', description: 'Adds timestamps to the chat log', category: 'Built-in' },
-  { name: 'tokens', description: 'Extends the parsable tokens in the chatlog', category: 'Built-in' },
-  { name: 'toybox', description: 'Collection of simple but very useful UI addons', category: 'Built-in' },
-  { name: 'tparty', description: 'Displays party member TP amounts and target health percent', category: 'Built-in' },
-  { name: 'trimspells', description: 'Changes the CTRL+M shortcut spell list to be trimmed to known spells', category: 'Built-in' },
-  { name: 'truesight', description: 'Removes entity occlusion and makes invisible players half-transparent', category: 'Built-in' },
-  { name: 'watchdog', description: 'Enables widescan tracking of nearly anything with a command', category: 'Built-in' },
-  // Community — with GitHub repo URLs for auto-download
-  // --- Gear & Combat ---
-  { name: 'LuAshitacast', description: 'The gear-swapping engine for Ashita v4 — write Lua scripts that automatically change your equipment based on spells, abilities, and events. Essential for endgame players.', category: 'Community', repo: 'ThornyFFXI/LuAshitacast', useRelease: true, installAs: 'LuAshitacast' },
-  { name: 'chains', description: 'Displays available skillchain paths and results based on your current weapons and party members. Helps plan and execute skillchains in real-time with an intuitive overlay.', category: 'Community', repo: 'loonsies/chains' },
-  { name: 'ninjaTool', description: 'Monitors Ninja tool inventory and displays casting cooldowns in a wheel display. Helps you track tool consumption and recast timing.', category: 'Community', repo: 'm4thmatic/ninjaTool' },
-  // --- UI Overhauls ---
-  { name: 'HXUI', description: 'Complete HUD replacement — party list, player bars, target bar, exp tracker, and more in a clean modern layout. One of the most popular Ashita v4 addons.', category: 'Community', repo: 'tirem/XIUI', useRelease: true, releaseFolder: 'XIUI', installAs: 'XIUI' },
-  { name: 'XIVBar', description: 'Clean HP/MP/TP bars inspired by FFXIV, displayed on screen at all times. Customizable colors, size, and position.', category: 'Community', repo: 'tirem/XIVBar', useRelease: true, releaseFolder: 'xivbar', installAs: 'xivbar' },
-  { name: 'XivParty', description: 'Full party list overlay ported from Windower — shows HP, MP, TP, buffs, and debuffs for all party and alliance members.', category: 'Community', repo: 'tirem/XivParty', useRelease: true, releaseFolder: 'XivParty', installAs: 'XivParty' },
-  { name: 'statustimers', description: 'Replaces the default tiny status icons with a fully customizable timer overlay. Shows buff/debuff durations for you and your party members with free placement.', category: 'Community', repo: 'HealsCodes/statustimers', useRelease: true, releaseFolder: 'statustimers', installAs: 'statustimers' },
-  { name: 'tTimers', description: 'Displays time remaining on buffs and debuffs you\'ve cast, plus recast timers for your spells and abilities. Clean, movable overlay.', category: 'Community', repo: 'ThornyFFXI/tTimers', useRelease: true, installAs: 'tTimers' },
+  // --- QoL / General ---
+  { name: 'enternity', description: 'Removes the need to press Enter during cutscenes and dialog', category: 'QoL / General' },
+  { name: 'instantchat', description: 'Removes the delay from adding messages to the chat windows', category: 'QoL / General' },
+  { name: 'instantah', description: 'Removes the delay from auction house interactions', category: 'QoL / General' },
+  { name: 'macrofix', description: 'Removes the macro bar delay when pressing CTRL or ALT', category: 'QoL / General' },
+  { name: 'quicksets', description: 'Removes the delay between equipping different equipment sets', category: 'QoL / General' },
+  { name: 'fastswap', description: 'Fixes a state issue with the client when trying to swap jobs too fast', category: 'QoL / General' },
+  { name: 'fps', description: 'Shows and controls the in-game FPS cap', category: 'QoL / General' },
+  { name: 'clock', description: 'Allows the player to display various times on screen', category: 'QoL / General' },
+  { name: 'hideconsole', description: 'Hides the boot loader console window', category: 'QoL / General' },
+  { name: 'move', description: 'Window helper to adjust position, size, border, and more', category: 'QoL / General' },
+  { name: 'cleancs', description: 'Hides Ashita rendered elements while in a cutscene', category: 'QoL / General' },
+  { name: 'freemem', description: 'Memory cleanup utility', category: 'QoL / General' },
+  { name: 'aspect', description: 'Handles non-standard aspect ratios not available via in-game config', category: 'QoL / General' },
+  { name: 'stepdialog', description: 'Manually invoke the key press to continue the current chat dialog', category: 'QoL / General' },
+  { name: 'nomad', description: 'Enables mog house functionality in any zone', category: 'QoL / General' },
+  { name: 'toybox', description: 'Bundle of small UI tweaks — recast timers, inventory counts, giltracker, and more. Toggle each feature with /toybox.', category: 'QoL / General' },
+  { name: 'castdelay', description: 'Blocks spells, ranged attacks, and item use until you stop moving — prevents wasted casts from input lag.', category: 'QoL / General', repo: 'ThornyFFXI/castdelay' },
+  // --- Combat & Targeting ---
+  { name: 'debuff', description: 'Enables cancelling status effects via a command', category: 'Combat & Targeting' },
+  { name: 'debuffed', description: 'Shows debuffs applied to your current target mob', category: 'Combat & Targeting' },
+  { name: 'distance', description: 'Displays the distance between you and your target', category: 'Combat & Targeting' },
+  { name: 'recast', description: 'Displays ability and spell recast times', category: 'Combat & Targeting' },
+  { name: 'tparty', description: 'Displays party member TP amounts and target health percent', category: 'Combat & Targeting' },
+  { name: 'checker', description: 'Displays additional information when using /check on a monster', category: 'Combat & Targeting' },
+  { name: 'nokb', description: 'Disables knockback effects applied to the local player', category: 'Combat & Targeting' },
+  { name: 'paranormal', description: 'Enables using nearly any game command while dead/unconscious', category: 'Combat & Targeting' },
+  { name: 'trimspells', description: 'Changes the CTRL+M shortcut spell list to be trimmed to known spells', category: 'Combat & Targeting' },
+  { name: 'LuAshitacast', description: 'The gear-swapping engine for Ashita v4 — write Lua scripts that automatically change your equipment based on spells, abilities, and events. Essential for endgame players.', category: 'Combat & Targeting', repo: 'ThornyFFXI/LuAshitacast', useRelease: true, installAs: 'LuAshitacast' },
+  { name: 'chains', description: 'Displays available skillchain paths and results based on your current weapons and party members. Helps plan and execute skillchains in real-time with an intuitive overlay.', category: 'Combat & Targeting', repo: 'loonsies/chains' },
+  { name: 'ninjaTool', description: 'Monitors Ninja tool inventory and displays casting cooldowns in a wheel display. Helps you track tool consumption and recast timing.', category: 'Combat & Targeting', repo: 'm4thmatic/ninjaTool' },
+  { name: 'HitPoints', description: 'Shows HP percentage on your current target and engaged enemies. Useful for knowing exactly when to weaponskill or use abilities.', category: 'Combat & Targeting', repo: 'ThornyFFXI/HitPoints', subdir: 'HitPoints', installAs: 'HitPoints', deps: ['gdifonts'], localDeps: { gdifonts: 'libs/gdifonts' } },
+  { name: 'statustimers', description: 'Replaces the default tiny status icons with a fully customizable timer overlay. Shows buff/debuff durations for you and your party members with free placement.', category: 'Combat & Targeting', repo: 'HealsCodes/statustimers', useRelease: true, releaseFolder: 'statustimers', installAs: 'statustimers' },
+  { name: 'tTimers', description: 'Displays time remaining on buffs and debuffs you\'ve cast, plus recast timers for your spells and abilities. Clean, movable overlay.', category: 'Combat & Targeting', repo: 'ThornyFFXI/tTimers', useRelease: true, installAs: 'tTimers' },
+  // --- UI / HUD ---
+  { name: 'ibar', description: 'Displays info about yourself and your current target', category: 'UI / HUD' },
+  { name: 'equipmon', description: 'Displays currently equipped items on screen at all times', category: 'UI / HUD' },
+  { name: 'invmon', description: 'Displays current inventory container space information', category: 'UI / HUD' },
+  { name: 'crosshair', description: 'Draws position helper lines to move Ashita elements on screen', category: 'UI / HUD' },
+  { name: 'hideparty', description: 'Slash commands to hide, show, or toggle the party frames', category: 'UI / HUD' },
+  { name: 'hideui', description: 'Slash commands to hide, show, or toggle Ashita UI elements', category: 'UI / HUD' },
+  { name: 'imguistyle', description: 'Allows per-character customizations to the ImGui style settings', category: 'UI / HUD' },
+  { name: 'activemon', description: 'Displays an image on screen showing if the current client is focused', category: 'UI / HUD' },
+  { name: 'clearcolor', description: 'Enables modding the background color of the scene', category: 'UI / HUD' },
+  { name: 'HXUI', description: 'Complete HUD replacement — party list, player bars, target bar, exp tracker, and more in a clean modern layout. One of the most popular Ashita v4 addons.', category: 'UI / HUD', repo: 'tirem/XIUI', useRelease: true, releaseFolder: 'XIUI', installAs: 'XIUI' },
+  { name: 'XIVBar', description: 'Clean HP/MP/TP bars inspired by FFXIV, displayed on screen at all times. Customizable colors, size, and position.', category: 'UI / HUD', repo: 'tirem/XIVBar', useRelease: true, releaseFolder: 'xivbar', installAs: 'xivbar' },
+  { name: 'XivParty', description: 'Full party list overlay ported from Windower — shows HP, MP, TP, buffs, and debuffs for all party and alliance members.', category: 'UI / HUD', repo: 'tirem/XivParty', useRelease: true, releaseFolder: 'XivParty', installAs: 'XivParty' },
+  { name: 'balloon', description: 'Displays NPC dialog text in speech bubbles above their heads instead of just the chat log. Makes conversations and cutscenes much easier to follow.', category: 'UI / HUD', repo: 'onimitch/ffxi-balloon-ashitav4', useRelease: true, installAs: 'Balloon', deps: ['gdifonts'], localDeps: { gdifonts: 'gdifonts' } },
+  { name: 'TreasurePool', description: 'Shows the treasure pool in a movable, customizable window with lot/pass information and item details for everything your party has found.', category: 'UI / HUD', repo: 'ShiyoKozuki/TreasurePool' },
+  { name: 'Emotes', description: 'Displays all available emotes in a browsable list so you don\'t need to remember the commands.', category: 'UI / HUD', repo: 'tirem/Emotes', subdir: 'Emotes', installAs: 'Emotes' },
   // --- Hotbars & Controls ---
-  { name: 'tHotBar', description: 'Adds a visual hotbar to your screen for binding macros and abilities to keyboard shortcuts. Drag-and-drop setup with customizable size and layout.', category: 'Community', repo: 'ThornyFFXI/tHotBar', useRelease: true, releaseFolder: 'thotbar', installAs: 'thotbar' },
-  { name: 'tCrossBar', description: 'Controller-friendly crossbar UI inspired by FFXIV. Maps abilities to a gamepad with a clean on-screen display. Requires Ashita 4.15+.', category: 'Community', repo: 'ThornyFFXI/tCrossBar', useRelease: true, installAs: 'tCrossBar' },
-  // --- Camera & Visuals ---
-  { name: 'XICamera', description: 'Unlocks extended camera distance and zoom controls. Lets you zoom out further than the game normally allows for better battlefield awareness.', category: 'Community', repo: 'Hokuten85/XICamera', isPlugin: true, useRelease: true, installAs: 'XICamera' },
-  { name: 'Cosplay', description: 'Copy the appearance of your current target — great for screenshots or just fun. Changes are client-side only.', category: 'Community', repo: 'tirem/Cosplay', subdir: 'Cosplay', installAs: 'Cosplay' },
-  // --- Info & Overlays ---
-  { name: 'balloon', description: 'Displays NPC dialog text in speech bubbles above their heads instead of just the chat log. Makes conversations and cutscenes much easier to follow.', category: 'Community', repo: 'onimitch/ffxi-balloon-ashitav4', useRelease: true, installAs: 'Balloon', deps: ['gdifonts'], localDeps: { gdifonts: 'gdifonts' } },
-  { name: 'TreasurePool', description: 'Shows the treasure pool in a movable, customizable window with lot/pass information and item details for everything your party has found.', category: 'Community', repo: 'ShiyoKozuki/TreasurePool' },
-  { name: 'EquipViewer', description: 'Overlays your currently equipped items anywhere on screen in a translucent, movable window. See your gear at a glance without opening menus. Note: this is a plugin, not an addon.', category: 'Community', repo: 'ProjectTako/EquipViewer', isPlugin: true, subdir: 'plugins' },
-  { name: 'HitPoints', description: 'Shows HP percentage on your current target and engaged enemies. Useful for knowing exactly when to weaponskill or use abilities.', category: 'Community', repo: 'ThornyFFXI/HitPoints', subdir: 'HitPoints', installAs: 'HitPoints', deps: ['gdifonts'], localDeps: { gdifonts: 'libs/gdifonts' } },
-  { name: 'FindAll', description: 'Loads all inventory data instantly on zone and enables cross-character item searching. Much faster than the built-in find addon. Note: this is a plugin, not an addon.', category: 'Community', repo: 'ThornyFFXI/FindAll', isPlugin: true, useRelease: true, installAs: 'FindAll' },
-  // --- Maps ---
-  { name: 'boussole', description: 'In-game map replacement with pan, zoom, real-time party/alliance position tracking, custom map points, and custom PNG map support. Integrates with XIPivot.', category: 'Community', repo: 'loonsies/boussole' },
+  { name: 'tHotBar', description: 'Adds a visual hotbar to your screen for binding macros and abilities to keyboard shortcuts. Drag-and-drop setup with customizable size and layout.', category: 'Hotbars & Controls', repo: 'ThornyFFXI/tHotBar', useRelease: true, releaseFolder: 'thotbar', installAs: 'thotbar' },
+  { name: 'tCrossBar', description: 'Controller-friendly crossbar UI inspired by FFXIV. Maps abilities to a gamepad with a clean on-screen display. Requires Ashita 4.15+.', category: 'Hotbars & Controls', repo: 'ThornyFFXI/tCrossBar', useRelease: true, installAs: 'tCrossBar' },
+  // --- Chat & Social ---
+  { name: 'chatmon', description: 'Plays sounds as a reaction to certain chat and other helpful events', category: 'Chat & Social' },
+  { name: 'chatfix', description: 'Fixes private server chat issues related to a client update', category: 'Chat & Social' },
+  { name: 'stfu', description: 'Blocks spam system messages and converts annoying macro sounds', category: 'Chat & Social' },
+  { name: 'timestamp', description: 'Adds timestamps to the chat log', category: 'Chat & Social' },
+  { name: 'logs', description: 'Creates per-character dated log files of all incoming text', category: 'Chat & Social' },
+  { name: 'links', description: 'Captures URLs from chat and lets you open them in a browser', category: 'Chat & Social' },
+  { name: 'onevent', description: 'Reacts to chat based events with customized commands', category: 'Chat & Social' },
+  { name: 'filters', description: 'Allows saving and loading chat filter sets with ease', category: 'Chat & Social' },
+  { name: 'filterless', description: 'Disables the bad language filter for private servers', category: 'Chat & Social' },
+  { name: 'autorespond', description: 'Auto-replies to tells with a configured message when enabled', category: 'Chat & Social' },
+  { name: 'autojoin', description: 'Auto-responds to party invites based on config rules', category: 'Chat & Social' },
+  { name: 'bgamelog', description: 'Battle log customization with emphasis on combat messages', category: 'Chat & Social' },
+  { name: 'tokens', description: 'Extends the parsable tokens in the chatlog', category: 'Chat & Social' },
+  { name: 'cfhblock', description: 'Blocks call for help from working to prevent accidents', category: 'Chat & Social' },
+  { name: 'Audible', description: 'Plays custom audio alerts triggered by in-game events like spell casts, ability readies, and battle actions.', category: 'Chat & Social', repo: 'ThornyFFXI/Audible' },
+  // --- Maps & Navigation ---
+  { name: 'allmaps', description: 'See every map via /map without needing the key items, including waypoints', category: 'Maps & Navigation' },
+  { name: 'cartographer', description: 'See every map in the map menus when viewing non-current zone maps', category: 'Maps & Navigation' },
+  { name: 'minimap', description: 'Adds a configurable minimap to your screen', category: 'Maps & Navigation' },
+  { name: 'minimapmon', description: 'Hides the Minimap plugin under certain conditions like standing still', category: 'Maps & Navigation' },
+  { name: 'mapdot', description: 'Enables seeing enemies on the compass on all jobs', category: 'Maps & Navigation' },
+  { name: 'drawdistance', description: 'Slash commands to alter the game scene rendering distances', category: 'Maps & Navigation' },
+  { name: 'mipmap', description: 'Removes the recent SE patch that altered mipmap configuration', category: 'Maps & Navigation' },
+  { name: 'boussole', description: 'In-game map replacement with pan, zoom, real-time party/alliance position tracking, custom map points, and custom PNG map support. Integrates with XIPivot.', category: 'Maps & Navigation', repo: 'loonsies/boussole' },
+  // --- Blue Mage ---
+  { name: 'bluesets', description: 'UI for managing Blue Mage spell sets', category: 'Blue Mage' },
+  { name: 'blucheck', description: 'Helper addon to track learned BLU spells with an in-game UI', category: 'Blue Mage' },
+  { name: 'blumon', description: 'Monitors for learnt Blue Mage spells and announces them with color', category: 'Blue Mage' },
+  // --- Crafting & Economy ---
+  { name: 'craftmon', description: 'Tracks crafting skill-ups and synthesis attempts', category: 'Crafting & Economy' },
+  { name: 'ahcolors', description: 'Changes the auction house listing colors to be easier to see', category: 'Crafting & Economy' },
+  { name: 'ahgo', description: 'Enables opening the AH from anywhere and moving with it open', category: 'Crafting & Economy' },
+  { name: 'itemwatch', description: 'Track and monitor items and key items on-screen', category: 'Crafting & Economy' },
+  { name: 'lotomatic', description: 'Treasure pool manager — auto lot/pass items', category: 'Crafting & Economy' },
+  // --- Search & Scan ---
+  { name: 'find', description: 'Search for items across all of your storage containers', category: 'Search & Scan' },
+  { name: 'filterscan', description: 'Allows filtering widescan results for specific entities', category: 'Search & Scan' },
+  { name: 'watchdog', description: 'Enables widescan tracking of nearly anything with a command', category: 'Search & Scan' },
+  { name: 'seekhelp', description: 'Alternative /sea interface with advanced filtering', category: 'Search & Scan' },
   // --- Trusts & Pets ---
-  { name: 'FancyTrusts', description: 'Fancy trust management UI — browse, summon, and organize your trusts without memorizing names or writing macros.', category: 'Community', repo: 'ThornyFFXI/FancyTrusts', subdir: 'FancyTrusts', installAs: 'FancyTrusts' },
-  // --- Utility ---
-  { name: 'Audible', description: 'Plays custom audio alerts triggered by in-game events like spell casts, ability readies, and battle actions.', category: 'Community', repo: 'ThornyFFXI/Audible' },
-  { name: 'castdelay', description: 'Blocks spells, ranged attacks, and item use until you stop moving — prevents wasted casts from input lag.', category: 'Community', repo: 'ThornyFFXI/castdelay' },
-  { name: 'Emotes', description: 'Displays all available emotes in a browsable list so you don\'t need to remember the commands.', category: 'Community', repo: 'tirem/Emotes', subdir: 'Emotes', installAs: 'Emotes' },
+  { name: 'petinfo', description: 'Displays information about the player pet', category: 'Trusts & Pets' },
+  { name: 'FancyTrusts', description: 'Fancy trust management UI — browse, summon, and organize your trusts without memorizing names or writing macros.', category: 'Trusts & Pets', repo: 'ThornyFFXI/FancyTrusts', subdir: 'FancyTrusts', installAs: 'FancyTrusts' },
+  // --- Cosmetic & Fun ---
+  { name: 'Cosplay', description: 'Copy the appearance of your current target — great for screenshots or just fun. Changes are client-side only.', category: 'Cosmetic & Fun', repo: 'tirem/Cosplay', subdir: 'Cosplay', installAs: 'Cosplay' },
+  { name: 'chamcham', description: 'Enables coloring models based on their entity type', category: 'Cosmetic & Fun' },
+  { name: 'casper', description: 'Remove collision with other players — walk through them like a ghost', category: 'Cosmetic & Fun' },
+  { name: 'gateway', description: 'Forces all doors to always be open', category: 'Cosmetic & Fun' },
+  { name: 'namecolors', description: 'Enables editing the game name color table', category: 'Cosmetic & Fun' },
+  { name: 'noname', description: 'Removes the local player name', category: 'Cosmetic & Fun' },
+  { name: 'peekaboo', description: 'Forces all entities the client obtains data for to be visible', category: 'Cosmetic & Fun' },
+  { name: 'renamer', description: 'Renames entities with overrides', category: 'Cosmetic & Fun' },
+  { name: 'sexchange', description: 'Allows changing the player race and hair style with commands', category: 'Cosmetic & Fun' },
+  { name: 'singlerace', description: 'Changes all player and NPC models to a single race/hair style', category: 'Cosmetic & Fun' },
+  { name: 'skeletonkey', description: 'Enables the ability to force closed doors open', category: 'Cosmetic & Fun' },
+  { name: 'truesight', description: 'Removes entity occlusion and makes invisible players half-transparent', category: 'Cosmetic & Fun' },
+  { name: 'changecall', description: 'Replaces all call commands with the selected call ID instead', category: 'Cosmetic & Fun' },
+  { name: 'chime', description: 'Play in-game chime based sound effects from a slash command', category: 'Cosmetic & Fun' },
+  // --- Automation & Scripting ---
+  { name: 'autologin', description: 'Automatically logs into a desired character slot', category: 'Automation & Scripting' },
+  { name: 'logincmd', description: 'Executes a per-character script when logging in or switching characters', category: 'Automation & Scripting' },
+  { name: 'repeater', description: 'Allows setting a command to be repeated automatically', category: 'Automation & Scripting' },
+  { name: 'shorthand', description: 'Write shortcuts for casting spells, JAs, weapon skills', category: 'Automation & Scripting' },
+  { name: 'config', description: 'Enables slash commands to force-set game settings directly', category: 'Automation & Scripting' },
+  { name: 'actionparse', description: 'Parses and displays incoming action packet information', category: 'Automation & Scripting' },
+  { name: 'affinity', description: 'Allows setting the current process affinity mask in-game', category: 'Automation & Scripting' },
+  { name: 'hideobs', description: 'Hides the game window from OBS display stream capturing', category: 'Automation & Scripting' },
+  { name: 'ime', description: 'Allows non-Japanese clients to use the Japanese IME and character sets', category: 'Automation & Scripting' },
   // --- Libraries (auto-installed as dependencies, hidden from grid) ---
   { name: 'gdifonts', description: 'Font rendering library required by balloon and other addons.', category: 'Library', repo: 'onimitch/gdifonts', installAs: 'libs/gdifonts', isLibrary: true },
 ];
@@ -142,28 +141,23 @@ export const ADDON_CATALOGUE = [
 const ADDON_BUNDLES = [
   {
     name: 'Solo Essentials',
-    desc: 'Gear swaps, hotbar, camera, trusts, and all the QoL you need for solo play',
-    addons: ['LuAshitacast', 'tHotBar', 'XICamera', 'HXUI', 'tTimers', 'balloon', 'FancyTrusts', 'FindAll', 'equipmon', 'fps', 'enternity', 'ibar']
+    desc: 'Gear swaps, hotbar, camera, and all the QoL you need for solo play',
+    addons: ['LuAshitacast', 'tHotBar', 'HXUI', 'tTimers', 'balloon', 'FancyTrusts', 'equipmon', 'fps', 'enternity', 'ibar', 'distance', 'instantchat', 'macrofix', 'quicksets', 'recast', 'invmon']
   },
   {
     name: 'Party & Endgame',
-    desc: 'Party list, skillchains, treasure pool, and target info for group content',
-    addons: ['LuAshitacast', 'tHotBar', 'XivParty', 'chains', 'TreasurePool', 'HitPoints', 'tTimers', 'XICamera', 'balloon', 'debuffed', 'enternity']
+    desc: 'Party list, skillchains, treasure pool, buffs, and target info for group content',
+    addons: ['LuAshitacast', 'tHotBar', 'XivParty', 'chains', 'TreasurePool', 'HitPoints', 'tTimers', 'balloon', 'debuffed', 'enternity', 'statustimers', 'recast', 'quicksets', 'distance', 'instantchat', 'macrofix', 'chatmon', 'tparty']
   },
   {
     name: 'Crafting & Utility',
-    desc: 'Crafting tracker, item search, loot management, and logging',
-    addons: ['craftmon', 'FindAll', 'itemwatch', 'lotomatic', 'equipmon', 'fps', 'logs', 'timestamp', 'balloon', 'enternity']
+    desc: 'Crafting tracker, item search, loot management, AH tools, and logging',
+    addons: ['craftmon', 'itemwatch', 'lotomatic', 'equipmon', 'fps', 'logs', 'timestamp', 'balloon', 'enternity', 'instantah', 'instantchat', 'invmon', 'ahcolors', 'ahgo', 'macrofix', 'clock']
   },
   {
     name: 'Controller Player',
-    desc: 'Gamepad-friendly crossbar with FFXIV-style HUD overlays',
-    addons: ['tCrossBar', 'LuAshitacast', 'HXUI', 'tTimers', 'XICamera', 'balloon', 'FancyTrusts', 'equipmon', 'fps', 'enternity']
-  },
-  {
-    name: 'Full UI Overhaul',
-    desc: 'Replace the default FFXI HUD with a modern, clean interface',
-    addons: ['HXUI', 'XivParty', 'tTimers', 'tHotBar', 'XICamera', 'HitPoints', 'EquipViewer', 'balloon', 'enternity', 'fps']
+    desc: 'Gamepad-friendly crossbar with FFXIV-style HUD overlays and QoL',
+    addons: ['tCrossBar', 'LuAshitacast', 'HXUI', 'tTimers', 'balloon', 'FancyTrusts', 'equipmon', 'fps', 'enternity', 'recast', 'distance', 'instantchat', 'macrofix', 'quicksets']
   }
 ];
 
@@ -201,13 +195,10 @@ const ADDON_HELP = {
   tTimers:       { commands: ['/ttimers'], usage: 'Recast and buff timers. /ttimers to open settings. Shows remaining time on buffs you cast and ability recasts.' },
   tHotBar:       { commands: ['/thotbar', '/thb'], usage: 'Visual hotbar. /thotbar or /thb to open settings. Drag abilities from the action menu to the bar. Bind keys in settings.' },
   tCrossBar:     { commands: ['/tcrossbar', '/txb'], usage: 'Controller crossbar (FFXIV-style). /tcrossbar or /txb to open settings. Hold LT/RT + face buttons to activate slots.' },
-  XICamera:      { commands: ['/xicamera'], usage: 'Extended camera controls. /xicamera to open settings. Scroll wheel to zoom beyond default limits.' },
   Cosplay:       { commands: ['/cosplay'], usage: 'Copy target appearance. Target a player/NPC and type /cosplay to copy their look. /cosplay reset to revert. Client-side only.' },
   balloon:       { commands: ['/balloon'], usage: 'NPC speech bubbles. /balloon to toggle. Shows NPC dialog text as floating bubbles above their heads.' },
   TreasurePool:  { commands: ['/tp', '/treasurepool'], usage: 'Treasure pool window. /tp or /treasurepool to toggle. Shows loot with lot/pass info in a movable window.' },
-  EquipViewer:   { commands: [], usage: 'Equipment overlay (plugin). Shows your equipped gear in a translucent window. Drag to reposition. No commands — auto-displays.' },
   HitPoints:     { commands: ['/hitpoints', '/hp'], usage: 'Target HP percentage. /hitpoints or /hp to toggle. Shows exact HP% on your target and engaged enemies.' },
-  FindAll:       { commands: ['/findall'], usage: 'Cross-character item search (plugin). /findall <item> to search all characters and storage. Loads all data on zone.' },
   boussole:      { commands: ['/boussole', '/bous'], usage: 'In-game map. /boussole or /bous to open. Pan and zoom with mouse, shows party positions. Supports custom PNG maps.' },
   FancyTrusts:   { commands: ['/fancytrusts', '/ft'], usage: 'Trust management UI. /fancytrusts or /ft to open. Browse, summon, and organize trusts without macros.' },
   Audible:       { commands: ['/audible'], usage: 'Audio alerts for events. /audible to open settings. Configure sounds for spell casts, mob abilities, and battle actions.' },
@@ -215,22 +206,6 @@ const ADDON_HELP = {
   Emotes:        { commands: ['/emotes'], usage: 'Emote browser. /emotes to open the list. Browse and click to use any emote without remembering commands.' },
 };
 
-const RECOMMENDATION_RULES = [
-  { if: ['luashitacast'], suggest: 'tHotBar', reason: 'Pair your gear swaps with a visual hotbar' },
-  { if: ['luashitacast'], suggest: 'tTimers', reason: 'Track buff durations alongside gear swaps' },
-  { if: ['xiui'], suggest: 'balloon', reason: 'Add NPC speech bubbles to complement your HUD' },
-  { if: ['xiui'], suggest: 'FindAll', reason: 'Cross-character item search pairs well with HXUI' },
-  { if: ['xivparty'], suggest: 'statustimers', reason: 'Add buff timers to your party UI' },
-  { if: ['thotbar'], suggest: 'luashitacast', reason: 'Hotbar works best with a gear-swap engine' },
-  { if: ['tcrossbar'], suggest: 'luashitacast', reason: 'Crossbar works best with a gear-swap engine' },
-  { ifAny: ['xiui', 'xivparty', 'xivbar'], suggest: 'HitPoints', reason: 'Add precise HP% to your HUD setup' },
-  { ifAny: ['xiui', 'xivparty'], suggest: 'TreasurePool', reason: 'Enhanced treasure pool display for party play' },
-  { ifAny: ['luashitacast', 'thotbar', 'tcrossbar'], suggest: 'FancyTrusts', reason: 'Trust management UI for solo play' },
-  { ifAny: ['boussole'], suggest: 'balloon', reason: 'Maps + speech bubbles for exploration' },
-  { ifCount: 5, suggest: 'enternity', reason: 'Skip cutscene key presses — great QoL with many addons' },
-  { ifCount: 3, suggest: 'fps', reason: 'Monitor your FPS with multiple addons loaded' },
-  { ifCount: 5, suggest: 'equipmon', reason: 'See your equipped gear at a glance' },
-];
 
 function AddonsTab({ config, updateConfig }) {
   const [installedAddons, setInstalledAddons] = useState([]);
@@ -399,7 +374,7 @@ function AddonsTab({ config, updateConfig }) {
   const applyBundle = async (bundle) => {
     // Install missing community addons
     const communityInBundle = bundle.addons.filter(name =>
-      ADDON_CATALOGUE.find(a => a.name.toLowerCase() === name.toLowerCase() && a.category === 'Community')
+      ADDON_CATALOGUE.find(a => a.name.toLowerCase() === name.toLowerCase() && a.repo)
     );
     const toInstall = communityInBundle.filter(name => !installedAddons.includes(name.toLowerCase()));
     if (toInstall.length > 0) {
@@ -416,7 +391,7 @@ function AddonsTab({ config, updateConfig }) {
   };
 
   const installAllCommunity = async () => {
-    const allCommunity = ADDON_CATALOGUE.filter(a => a.category === 'Community' && a.repo).map(a => a.name);
+    const allCommunity = ADDON_CATALOGUE.filter(a => a.repo).map(a => a.name);
     await batchInstall(allCommunity);
   };
 
@@ -425,8 +400,8 @@ function AddonsTab({ config, updateConfig }) {
     // Use the installAs name (actual folder name) for the script command
     const catalogEntry = ADDON_CATALOGUE.find(a => a.name === addonName);
     const scriptName = (catalogEntry?.installAs || addonName).toLowerCase();
-    // Block enabling uninstalled community addons
-    if (catalogEntry?.category === 'Community' && !installedAddons.includes(scriptName)) return;
+    // Block enabling uninstalled community addons (those with a repo that haven't been downloaded)
+    if (catalogEntry?.repo && !installedAddons.includes(scriptName)) return;
     const isEnabled = enabledAddons.includes(scriptName);
     const newEnabled = isEnabled
       ? enabledAddons.filter(a => a !== scriptName)
@@ -441,7 +416,7 @@ function AddonsTab({ config, updateConfig }) {
 
   const setAll = async (enable) => {
     if (!config.activeProfile) return;
-    const newEnabled = enable ? ADDON_CATALOGUE.filter(a => !a.isLibrary && (a.category === 'Built-in' || installedAddons.includes((a.installAs || a.name).toLowerCase()))).map(a => (a.installAs || a.name).toLowerCase()) : [];
+    const newEnabled = enable ? ADDON_CATALOGUE.filter(a => !a.isLibrary && (!a.repo || installedAddons.includes((a.installAs || a.name).toLowerCase()))).map(a => (a.installAs || a.name).toLowerCase()) : [];
     setEnabledAddons(newEnabled);
     await saveAddonsToProfile(newEnabled);
   };
@@ -596,29 +571,14 @@ function AddonsTab({ config, updateConfig }) {
   const filtered = ADDON_CATALOGUE.filter(a => {
     if (a.isLibrary) return false; // Hide library deps from grid
     if (search && !a.name.toLowerCase().includes(search.toLowerCase()) && !a.description.toLowerCase().includes(search.toLowerCase())) return false;
-    if (categoryFilter === 'Built-in' && a.category !== 'Built-in') return false;
-    if (categoryFilter === 'Community' && a.category !== 'Community') return false;
-    if (categoryFilter === 'Installed' && !(a.category === 'Community' && installedAddons.includes(a.name.toLowerCase()))) return false;
+    if (categoryFilter !== 'All' && a.category !== categoryFilter) return false;
     return true;
   });
 
   const visibleCatalogue = ADDON_CATALOGUE.filter(a => !a.isLibrary);
-  const builtinCount = visibleCatalogue.filter(a => a.category === 'Built-in').length;
-  const communityCount = visibleCatalogue.filter(a => a.category === 'Community').length;
-  const communityInstalledCount = visibleCatalogue.filter(a => a.category === 'Community' && installedAddons.includes((a.installAs || a.name).toLowerCase())).length;
+  const categories = [...new Set(visibleCatalogue.map(a => a.category))].sort();
 
-  const recommendations = useMemo(() => {
-    return RECOMMENDATION_RULES.filter(rule => {
-      const addon = ADDON_CATALOGUE.find(a => a.name === rule.suggest);
-      if (!addon || addon.isLibrary) return false;
-      const scriptName = (addon.installAs || addon.name).toLowerCase();
-      if (enabledAddons.includes(scriptName)) return false; // already enabled
-      if (rule.if) return rule.if.every(dep => enabledAddons.includes(dep));
-      if (rule.ifAny) return rule.ifAny.some(dep => enabledAddons.includes(dep));
-      if (rule.ifCount) return enabledAddons.length >= rule.ifCount;
-      return false;
-    }).slice(0, 4);
-  }, [enabledAddons]);
+
 
   return (
     <div className="addons-tab">
@@ -641,6 +601,16 @@ function AddonsTab({ config, updateConfig }) {
             onChange={e => setSearch(e.target.value)}
             className="addons-search"
           />
+          <select
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            className="addons-category-filter"
+          >
+            <option value="All">All ({visibleCatalogue.length})</option>
+            {categories.map(cat => (
+              <option key={cat} value={cat}>{cat} ({visibleCatalogue.filter(a => a.category === cat).length})</option>
+            ))}
+          </select>
           <button className="btn btn-ghost btn-sm" onClick={loadAddons}>↻</button>
           <button className="btn btn-ghost btn-sm" onClick={installAllCommunity} disabled={batchInstalling}>
             {batchInstalling ? '◌ Installing...' : '↓ Install All'}
@@ -797,7 +767,7 @@ function AddonsTab({ config, updateConfig }) {
                     onChange={() => toggleBundleAddon(addon.name)}
                   />
                   <span className="bundle-editor-addon-name">{addon.name}</span>
-                  <span className={`addon-category-tag ${addon.category.toLowerCase()} addon-category-tag-sm`}>{addon.category}</span>
+                  <span className={`addon-category-tag addon-category-tag-sm`}>{addon.category}</span>
                 </label>
               ))}
             </div>
@@ -857,98 +827,74 @@ function AddonsTab({ config, updateConfig }) {
         </Modal>
       )}
 
-      {recommendations.length > 0 && (
-        <div className="addons-recommendations">
-          <div className="section-header">Recommended For You</div>
-          <div className="addons-rec-grid">
-            {recommendations.map(rec => {
-              const addon = ADDON_CATALOGUE.find(a => a.name === rec.suggest);
-              if (!addon) return null;
-              const scriptName = (addon.installAs || addon.name).toLowerCase();
-              const isInstalled = installedAddons.includes(scriptName);
-              return (
-                <div key={rec.suggest} className="addon-rec-card panel">
-                  <div className="addon-rec-header">
-                    <span className="mono addon-rec-name">{addon.name}</span>
-                    {isInstalled && <span className="pill pill-green addon-rec-installed-pill">Installed</span>}
-                  </div>
-                  <p className="addon-rec-reason">{rec.reason}</p>
-                  <div className="addon-rec-actions">
-                    {isInstalled ? (
-                      <button className="btn btn-primary btn-sm addon-rec-btn" onClick={() => toggleAddon(addon.name)}>Enable</button>
-                    ) : (
-                      <button className="btn btn-primary btn-sm addon-rec-btn" onClick={() => handleInstall(addon)}>Install</button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="addons-grid">
-        {filtered.map(addon => {
-          const scriptName = (addon.installAs || addon.name).toLowerCase();
-          const isEnabled = enabledAddons.includes(scriptName);
-          const isInstalled = installedAddons.includes(scriptName);
-          return (
-            <div key={addon.name} className={`addon-card ${isEnabled ? 'enabled' : ''}`}>
-              <div className="addon-card-header">
-                <span className="addon-name mono">{addon.name}</span>
-                <div className="addon-tags">
-                  <span className={`addon-category-tag ${addon.category.toLowerCase()}`}>{addon.category}</span>
-                  {isInstalled && addon.category === 'Community' && <span className="addon-installed-tag">Installed</span>}
-                </div>
-              </div>
-              <p className="addon-desc">{addon.description}</p>
-              {addon.deps && <div className="addon-deps-note">Requires: {addon.deps.join(', ')}</div>}
-              {installing[addon.name] && (
-                <div className="addon-progress">
-                  <div className="addon-progress-bar">
-                    <div className="addon-progress-fill" style={{ width: `${installing[addon.name].percent}%` }} />
-                  </div>
-                  <span className="addon-progress-text">{installing[addon.name].detail}</span>
-                </div>
-              )}
-              {installMsg?.addonName === addon.name && (
-                <div className={`addon-install-msg ${installMsg.success ? 'success' : 'error'}`}>
-                  {installMsg.text}
-                </div>
-              )}
-              <div className="addon-card-footer">
-                <div className="addon-card-footer-left">
-                  {addon.category === 'Community' && !isInstalled ? (
-                    <span className="addon-install-hint">Install to enable</span>
-                  ) : (
-                    <>
-                      <div className="toggle" onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleAddon(addon.name); }}>
-                        <input type="checkbox" checked={isEnabled} readOnly />
-                        <span className="toggle-slider" />
+      <div className="addons-grouped">
+        {[...new Set(filtered.map(a => a.category))].map(cat => (
+          <div key={cat} className="addons-category-group">
+            <div className="addons-category-header cinzel">{cat}</div>
+            <div className="addons-grid">
+              {filtered.filter(a => a.category === cat).map(addon => {
+                const scriptName = (addon.installAs || addon.name).toLowerCase();
+                const isEnabled = enabledAddons.includes(scriptName);
+                const isInstalled = installedAddons.includes(scriptName);
+                return (
+                  <div key={addon.name} className={`addon-card ${isEnabled ? 'enabled' : ''}`}>
+                    <div className="addon-card-header">
+                      <span className="addon-name mono">{addon.name}</span>
+                      <div className="addon-tags">
+                        {isInstalled && addon.repo && <span className="addon-installed-tag">Installed</span>}
                       </div>
-                      <span className="addon-status-label">{isEnabled ? 'Enabled' : 'Disabled'}</span>
-                    </>
-                  )}
-                </div>
-                {addon.category === 'Community' && addon.repo && !installing[addon.name] && (
-                  <div className="addon-card-actions">
-                    <button
-                      className={`btn btn-sm ${isInstalled ? 'btn-ghost' : 'btn-primary'}`}
-                      onClick={() => handleInstall(addon)}
-                    >
-                      {isInstalled ? '↻ Update' : '↓ Install'}
-                    </button>
-                    {isInstalled && (
-                      <button className="btn btn-ghost btn-sm btn-danger-outline" onClick={() => handleUninstall(addon)}>
-                        ✕
-                      </button>
+                    </div>
+                    <p className="addon-desc">{addon.description}</p>
+                    {addon.deps && <div className="addon-deps-note">Requires: {addon.deps.join(', ')}</div>}
+                    {installing[addon.name] && (
+                      <div className="addon-progress">
+                        <div className="addon-progress-bar">
+                          <div className="addon-progress-fill" style={{ width: `${installing[addon.name].percent}%` }} />
+                        </div>
+                        <span className="addon-progress-text">{installing[addon.name].detail}</span>
+                      </div>
                     )}
+                    {installMsg?.addonName === addon.name && (
+                      <div className={`addon-install-msg ${installMsg.success ? 'success' : 'error'}`}>
+                        {installMsg.text}
+                      </div>
+                    )}
+                    <div className="addon-card-footer">
+                      <div className="addon-card-footer-left">
+                        {addon.repo && !isInstalled ? (
+                          <span className="addon-install-hint">Install to enable</span>
+                        ) : (
+                          <>
+                            <div className="toggle" onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleAddon(addon.name); }}>
+                              <input type="checkbox" checked={isEnabled} readOnly />
+                              <span className="toggle-slider" />
+                            </div>
+                            <span className="addon-status-label">{isEnabled ? 'Enabled' : 'Disabled'}</span>
+                          </>
+                        )}
+                      </div>
+                      {addon.repo && !installing[addon.name] && (
+                        <div className="addon-card-actions">
+                          <button
+                            className={`btn btn-sm ${isInstalled ? 'btn-ghost' : 'btn-primary'}`}
+                            onClick={() => handleInstall(addon)}
+                          >
+                            {isInstalled ? '↻ Update' : '↓ Install'}
+                          </button>
+                          {isInstalled && (
+                            <button className="btn btn-ghost btn-sm btn-danger-outline" onClick={() => handleUninstall(addon)}>
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );

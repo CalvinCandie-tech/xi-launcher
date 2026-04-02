@@ -37,6 +37,37 @@
   padding: 6px 10px !important;
 }
 
+.addons-category-filter {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-deepest);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.addons-category-filter:focus {
+  border-color: var(--teal-dim);
+  outline: none;
+}
+
+.addons-grouped {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.addons-category-header {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
 .addon-help-btn {
   padding: 6px 14px;
   font-size: 13px;
