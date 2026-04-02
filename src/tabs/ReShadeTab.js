@@ -1,58 +1,86 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './ReShadeTab.css';
+import CollapsibleSection from '../components/CollapsibleSection';
 
 const api = window.xiAPI;
 
+const EFFECT_META = [
+  { key: 'smaa',             label: 'SMAA Anti-Aliasing',  hint: 'Smooths jagged edges — big quality boost for FFXI',       hasSlider: false },
+  { key: 'sharpening',       label: 'Sharpening',          hint: 'Crisp edges and fine texture detail',                      hasSlider: true, min: 0, max: 1, step: 0.05 },
+  { key: 'clarity',          label: 'Clarity',             hint: 'Mid-tone contrast — textures look more detailed',          hasSlider: true, min: 0, max: 1, step: 0.05 },
+  { key: 'vibrance',         label: 'Vibrance',            hint: 'Intelligent saturation — boosts dull colors, preserves vivid ones', hasSlider: true, min: 0, max: 1, step: 0.05 },
+  { key: 'colourfulness',    label: 'Colourfulness',       hint: 'Per-channel saturation — makes each color more distinct',  hasSlider: true, min: 0, max: 1, step: 0.05 },
+  { key: 'bloom',            label: 'Bloom / Glow',        hint: 'Candles, fires, and crystals radiate soft light',          hasSlider: true, min: 0, max: 1, step: 0.05 },
+  { key: 'ambientOcclusion', label: 'Ambient Occlusion',   hint: 'Adds depth shadows in corners and crevices',              hasSlider: false },
+  { key: 'vignette',         label: 'Vignette',            hint: 'Darkens screen edges — draws focus to the center',         hasSlider: true, min: 0, max: 1, step: 0.05 },
+  { key: 'filmGrain',        label: 'Film Grain',          hint: 'Subtle noise for a cinematic look',                        hasSlider: true, min: 0, max: 1, step: 0.05 },
+  { key: 'depthOfField',     label: 'Depth of Field',      hint: 'Blurs background like a camera lens — great for screenshots', hasSlider: false },
+  { key: 'fakeHDR',          label: 'Fake HDR',            hint: 'Tone mapping — recovers highlight and shadow detail',      hasSlider: true, min: 0, max: 1, step: 0.05 },
+  { key: 'liftGammaGain',    label: 'Lift Gamma Gain',     hint: 'Color grading — adjust shadows, midtones, and highlights', hasSlider: false },
+];
+
+const DEFAULT_EFFECTS = Object.fromEntries(
+  EFFECT_META.map(m => [m.key, m.hasSlider ? { enabled: false, value: 0.50 } : { enabled: false }])
+);
+
 const PRESETS = [
   {
-    name: 'Vibrant',
-    desc: "Boosted saturation + sharpening. Makes Vana'diel colors pop.",
+    name: 'Clean',
+    desc: "Fixes FFXI's rough edges without changing the look.",
     effects: {
+      smaa: { enabled: true },
       sharpening: { enabled: true, value: 0.60 },
-      saturation: { enabled: true, value: 0.50 },
-      bloom: { enabled: true, value: 0.20 },
-      filmGrain: { enabled: false, value: 0.30 },
-      ambientOcclusion: { enabled: false },
-    }
+      clarity: { enabled: true, value: 0.30 },
+    },
+    count: 3,
+  },
+  {
+    name: 'Vivid',
+    desc: 'Clean + punchy, saturated colors that make zones pop.',
+    effects: {
+      smaa: { enabled: true },
+      sharpening: { enabled: true, value: 0.60 },
+      clarity: { enabled: true, value: 0.30 },
+      vibrance: { enabled: true, value: 0.30 },
+      colourfulness: { enabled: true, value: 0.40 },
+    },
+    count: 5,
   },
   {
     name: 'Cinematic',
-    desc: 'Film grain + warm tones + bloom. Movie-like atmosphere.',
+    desc: 'Vivid + bloom, ambient occlusion, vignette, and film grain.',
     effects: {
-      sharpening: { enabled: true, value: 0.30 },
-      saturation: { enabled: true, value: 0.15 },
-      bloom: { enabled: true, value: 0.40 },
-      filmGrain: { enabled: true, value: 0.30 },
-      ambientOcclusion: { enabled: false },
-    }
+      smaa: { enabled: true },
+      sharpening: { enabled: true, value: 0.60 },
+      clarity: { enabled: true, value: 0.30 },
+      vibrance: { enabled: true, value: 0.30 },
+      colourfulness: { enabled: true, value: 0.40 },
+      bloom: { enabled: true, value: 0.30 },
+      ambientOcclusion: { enabled: true },
+      vignette: { enabled: true, value: 0.40 },
+      filmGrain: { enabled: true, value: 0.15 },
+    },
+    count: 9,
   },
   {
-    name: 'Nostalgic',
-    desc: 'Sepia tone + soft bloom + grain. Classic RPG feel.',
+    name: 'Screenshot',
+    desc: 'Cinematic + depth of field, HDR, and color grading. Not for gameplay.',
     effects: {
-      sharpening: { enabled: true, value: 0.20 },
-      saturation: { enabled: true, value: -0.10 },
-      bloom: { enabled: true, value: 0.45 },
-      filmGrain: { enabled: true, value: 0.25 },
-      ambientOcclusion: { enabled: false },
-    }
-  }
-];
-
-const DEFAULT_EFFECTS = {
-  sharpening: { enabled: false, value: 0.60 },
-  saturation: { enabled: false, value: 0.50 },
-  bloom: { enabled: false, value: 0.20 },
-  filmGrain: { enabled: false, value: 0.30 },
-  ambientOcclusion: { enabled: false },
-};
-
-const EFFECT_META = [
-  { key: 'sharpening', label: 'Sharpening', hint: 'Crisp edges and fine detail', hasSlider: true },
-  { key: 'saturation', label: 'Color Saturation', hint: 'Richer, more vivid colors', hasSlider: true },
-  { key: 'bloom', label: 'Bloom / Glow', hint: 'Candles, fires, and crystals radiate light', hasSlider: true },
-  { key: 'filmGrain', label: 'Film Grain', hint: 'Subtle noise for a cinematic look', hasSlider: true },
-  { key: 'ambientOcclusion', label: 'Ambient Occlusion', hint: 'Adds depth shadows in corners and crevices', hasSlider: false },
+      smaa: { enabled: true },
+      sharpening: { enabled: true, value: 0.60 },
+      clarity: { enabled: true, value: 0.30 },
+      vibrance: { enabled: true, value: 0.30 },
+      colourfulness: { enabled: true, value: 0.40 },
+      bloom: { enabled: true, value: 0.30 },
+      ambientOcclusion: { enabled: true },
+      vignette: { enabled: true, value: 0.40 },
+      filmGrain: { enabled: true, value: 0.15 },
+      depthOfField: { enabled: true },
+      fakeHDR: { enabled: true, value: 0.50 },
+      liftGammaGain: { enabled: true },
+    },
+    count: 12,
+  },
 ];
 
 function ReShadeTab({ config, updateConfig, onNavigate }) {
@@ -134,20 +162,30 @@ function ReShadeTab({ config, updateConfig, onNavigate }) {
   };
 
   // Determine which preset matches current effects (or 'Custom')
-  const activePreset = PRESETS.find(p => {
-    return Object.keys(p.effects).every(key => {
-      const pe = p.effects[key];
-      const ce = effects[key];
-      if (pe.enabled !== ce.enabled) return false;
-      if (pe.value !== undefined && ce.value !== undefined) {
-        return Math.abs(pe.value - ce.value) < 0.01;
+  const activePreset = PRESETS.find(preset => {
+    return EFFECT_META.every(meta => {
+      const presetEffect = preset.effects[meta.key];
+      const currentEffect = effects[meta.key];
+      if (presetEffect) {
+        if (!currentEffect?.enabled) return false;
+        if (presetEffect.value !== undefined && currentEffect.value !== undefined) {
+          return Math.abs(presetEffect.value - currentEffect.value) < 0.01;
+        }
+        return true;
       }
-      return true;
+      return !currentEffect?.enabled;
     });
   })?.name || 'Custom';
 
   const applyPreset = async (preset) => {
-    const newEffects = { ...preset.effects };
+    const newEffects = {};
+    for (const meta of EFFECT_META) {
+      if (preset.effects[meta.key]) {
+        newEffects[meta.key] = { ...preset.effects[meta.key] };
+      } else {
+        newEffects[meta.key] = meta.hasSlider ? { enabled: false, value: DEFAULT_EFFECTS[meta.key].value } : { enabled: false };
+      }
+    }
     setEffects(newEffects);
     await api.writeReShadeConfig(ffxiPath, newEffects);
   };
@@ -262,64 +300,68 @@ function ReShadeTab({ config, updateConfig, onNavigate }) {
       {status?.installed && enabled && (
         <>
           <div className="section-header">Presets</div>
-          <div className="reshade-presets-grid">
+          <div className="reshade-presets-list">
             {PRESETS.map(preset => (
               <div
                 key={preset.name}
-                className={`panel reshade-preset-card ${activePreset === preset.name ? 'active' : ''}`}
+                className={`reshade-preset-row ${activePreset === preset.name ? 'active' : ''}`}
                 onClick={() => applyPreset(preset)}
               >
-                {activePreset === preset.name && (
-                  <span className="reshade-preset-badge">✓ Active</span>
-                )}
                 <div className="reshade-preset-name cinzel">{preset.name}</div>
                 <div className="reshade-preset-desc">{preset.desc}</div>
+                <div className="reshade-preset-count">{preset.count} effects</div>
               </div>
             ))}
           </div>
 
-          <div className="section-header">Effects</div>
-          <div className="reshade-effects-list">
-            {EFFECT_META.map(meta => {
-              const effect = effects[meta.key];
-              return (
-                <div key={meta.key} className={`reshade-effect-row ${effect?.enabled ? '' : 'disabled'}`}>
-                  <div className="toggle" onClick={() => updateEffect(meta.key, { enabled: !effect?.enabled })}>
-                    <input type="checkbox" checked={effect?.enabled ?? false} readOnly />
-                    <span className="toggle-slider" />
-                  </div>
-                  <div className="reshade-effect-info">
-                    <div className="reshade-effect-label">{meta.label}</div>
-                    <div className="reshade-effect-hint">{meta.hint}</div>
-                  </div>
-                  {meta.hasSlider && (
-                    <div className="reshade-effect-slider">
-                      <input
-                        type="range"
-                        min="-0.10"
-                        max="1.00"
-                        step="0.05"
-                        value={effect?.value ?? 0.5}
-                        onChange={e => updateEffect(meta.key, { value: parseFloat(e.target.value) })}
-                        disabled={!effect?.enabled}
-                        className="reshade-slider"
-                      />
-                      <span className={`reshade-effect-value ${effect?.enabled ? 'active' : ''}`}>
-                        {effect?.enabled ? (effect?.value ?? 0).toFixed(2) : 'Off'}
-                      </span>
+          <CollapsibleSection title="Customize Effects" defaultOpen={false}>
+            <div className="reshade-effects-list">
+              {EFFECT_META.map(meta => {
+                const effect = effects[meta.key];
+                return (
+                  <div key={meta.key} className={`reshade-effect-row ${effect?.enabled ? '' : 'disabled'}`}>
+                    <div className="toggle" onClick={() => updateEffect(meta.key, { enabled: !effect?.enabled })}>
+                      <input type="checkbox" checked={effect?.enabled ?? false} readOnly />
+                      <span className="toggle-slider" />
                     </div>
-                  )}
-                  {!meta.hasSlider && (
-                    <div className="reshade-effect-slider">
-                      <span className={`reshade-effect-value ${effect?.enabled ? 'active' : ''}`}>
-                        {effect?.enabled ? 'On' : 'Off'}
-                      </span>
+                    <div className="reshade-effect-info">
+                      <div className="reshade-effect-label">{meta.label}</div>
+                      <div className="reshade-effect-hint">{meta.hint}</div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    {meta.hasSlider && (
+                      <div className="reshade-effect-slider">
+                        <input
+                          type="range"
+                          min={meta.min ?? 0}
+                          max={meta.max ?? 1}
+                          step={meta.step ?? 0.05}
+                          value={effect?.value ?? 0.5}
+                          onChange={e => updateEffect(meta.key, { value: parseFloat(e.target.value) })}
+                          disabled={!effect?.enabled}
+                          className="reshade-slider"
+                        />
+                        <span className={`reshade-effect-value ${effect?.enabled ? 'active' : ''}`}>
+                          {effect?.enabled ? (effect?.value ?? 0).toFixed(2) : 'Off'}
+                        </span>
+                      </div>
+                    )}
+                    {!meta.hasSlider && (
+                      <div className="reshade-effect-slider">
+                        <span className={`reshade-effect-value ${effect?.enabled ? 'active' : ''}`}>
+                          {effect?.enabled ? 'On' : 'Off'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {activePreset === 'Custom' && (
+              <div className="reshade-custom-hint">
+                Slider values differ from all presets — showing as <strong>Custom</strong>.
+              </div>
+            )}
+          </CollapsibleSection>
         </>
       )}
     </div>
