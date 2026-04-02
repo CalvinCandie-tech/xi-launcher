@@ -24,6 +24,11 @@ function extractZip(zipPath, destDir, onProgress) {
       zipfile.readEntry();
       zipfile.on('entry', (entry) => {
         const entryPath = path.join(destDir, entry.fileName);
+        // Zip slip protection: reject entries that escape destDir
+        const resolved = path.resolve(entryPath);
+        if (!resolved.startsWith(path.resolve(destDir) + path.sep) && resolved !== path.resolve(destDir)) {
+          return reject(new Error(`Zip entry escapes target: ${entry.fileName}`));
+        }
 
         if (/\/$/.test(entry.fileName)) {
           // Directory entry
@@ -380,12 +385,16 @@ function registerIPC() {
   });
 
   ipcMain.handle('open-folder', async (_, p) => {
-    try { await shell.openPath(p); return true; } catch { return false; }
+    try {
+      if (!isAllowedPath(p)) return false;
+      await shell.openPath(p);
+      return true;
+    } catch { return false; }
   });
 
   // Version / update checker
-  const APP_VERSION = '1.0.0';
-  const UPDATE_REPO = 'xi-launcher/xi-launcher'; // TODO: Update to actual GitHub repo when published
+  const APP_VERSION = app.getVersion();
+  const UPDATE_REPO = 'CalvinCandie-tech/XI-Launcher';
 
   ipcMain.handle('get-app-version', () => APP_VERSION);
 
@@ -1061,7 +1070,9 @@ function registerIPC() {
   });
 
   ipcMain.handle('delete-profile', async (_, ashitaPath, name) => {
-    const filePath = path.join(ashitaPath, 'config', 'boot', `${name}.ini`);
+    const safeName = sanitizeProfileName(name);
+    if (!safeName) return { success: false, error: 'Invalid profile name' };
+    const filePath = path.join(ashitaPath, 'config', 'boot', `${safeName}.ini`);
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -2342,19 +2353,6 @@ function registerIPC() {
     return null;
   }
 
-  function copyDirSync(src, dest) {
-    fs.mkdirSync(dest, { recursive: true });
-    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
-      if (entry.isDirectory()) {
-        copyDirSync(srcPath, destPath);
-      } else {
-        fs.copyFileSync(srcPath, destPath);
-      }
-    }
-  }
-
   // Helper: get the directory where ReShade DLL + INI live (same as dgVoodoo — next to the game exe)
   function getReshadeDllDir() {
     const xiloaderPath = store?.get('xiloaderPath');
@@ -2503,7 +2501,7 @@ function registerIPC() {
       const destShaders = path.join(ffxiPath, 'reshade-shaders');
       if (fs.existsSync(srcShaders)) {
         if (fs.existsSync(destShaders)) fs.rmSync(destShaders, { recursive: true, force: true });
-        copyDirSync(srcShaders, destShaders);
+        copyRecursive(srcShaders, destShaders);
       }
 
       return { success: true };
@@ -2875,6 +2873,7 @@ function registerIPC() {
   // Copy a directory recursively (for local dependency installation)
   ipcMain.handle('copy-dir', async (_, src, dest) => {
     try {
+      if (!isAllowedPath(src) || !isAllowedPath(dest)) return { success: false, error: 'Path not allowed' };
       if (!fs.existsSync(src)) return { success: false, error: 'Source not found' };
       fs.cpSync(src, dest, { recursive: true, force: true });
       return { success: true };
@@ -3072,9 +3071,14 @@ function registerIPC() {
       // Restore launcher settings if present
       const settingsFile = path.join(tmpDir, 'xi-launcher-settings.json');
       if (fs.existsSync(settingsFile)) {
+        const allowedKeys = new Set([
+          'ashitaPath', 'ffxiPath', 'xiloaderPath', 'serverAddress', 'serverPort',
+          'lastProfile', 'minimizeToTray', 'profiles', 'activeProfile',
+          'hairpin', 'gamepadId', 'windowMode'
+        ]);
         const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
         for (const [key, value] of Object.entries(settings)) {
-          store.set(key, value);
+          if (allowedKeys.has(key)) store.set(key, value);
         }
       }
 
