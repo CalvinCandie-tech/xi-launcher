@@ -2539,7 +2539,6 @@ function registerIPC() {
       const dllDir = getReshadeDllDir() || ffxiPath;
 
       // ReShade 6.x: main INI has paths/general config, preset file has effect values
-      // Write/update ReShade.ini only if it doesn't exist (ReShade manages it after first run)
       const iniPath = path.join(dllDir, 'ReShade.ini');
       if (!fs.existsSync(iniPath)) {
         const shadersAbsPath = path.join(ffxiPath, 'reshade-shaders', 'Shaders');
@@ -2555,30 +2554,41 @@ function registerIPC() {
         fs.writeFileSync(iniPath, iniLines.join('\r\n'), 'utf8');
       }
 
-      // ReShade 6.x preset: Techniques= line enables effects, sections hold values
+      // Map of effect key -> { technique, iniSection, iniKey }
+      const EFFECT_MAP = {
+        smaa:             { technique: 'SMAA@SMAA.fx' },
+        sharpening:       { technique: 'LumaSharpen@LumaSharpen.fx', iniSection: 'LumaSharpen.fx', iniKey: 'sharp_strength' },
+        clarity:          { technique: 'Clarity@Clarity.fx', iniSection: 'Clarity.fx', iniKey: 'ClarityStrength' },
+        vibrance:         { technique: 'Vibrance@Vibrance.fx', iniSection: 'Vibrance.fx', iniKey: 'Vibrance' },
+        colourfulness:    { technique: 'Colourfulness@Colourfulness.fx', iniSection: 'Colourfulness.fx', iniKey: 'colourfulness' },
+        bloom:            { technique: 'MagicBloom@Bloom.fx', iniSection: 'Bloom.fx', iniKey: 'BloomIntensity' },
+        ambientOcclusion: { technique: 'MXAO@MXAO.fx' },
+        vignette:         { technique: 'Vignette@Vignette.fx', iniSection: 'Vignette.fx', iniKey: 'VignetteAmount' },
+        filmGrain:        { technique: 'FilmGrain@FilmGrain.fx', iniSection: 'FilmGrain.fx', iniKey: 'Intensity' },
+        depthOfField:     { technique: 'DepthOfField@DepthOfField.fx' },
+        fakeHDR:          { technique: 'FakeHDR@FakeHDR.fx', iniSection: 'FakeHDR.fx', iniKey: 'HDRPower' },
+        liftGammaGain:    { technique: 'LiftGammaGain@LiftGammaGain.fx' },
+      };
+
+      // Build Techniques line from enabled effects
       const techniques = [];
-      if (effects.sharpening?.enabled) techniques.push('LumaSharpen@LumaSharpen.fx');
-      if (effects.saturation?.enabled) techniques.push('Vibrance@Vibrance.fx');
-      if (effects.bloom?.enabled) techniques.push('MagicBloom@Bloom.fx');
-      if (effects.filmGrain?.enabled) techniques.push('FilmGrain@FilmGrain.fx');
-      if (effects.ambientOcclusion?.enabled) techniques.push('MXAO@MXAO.fx');
+      for (const [key, map] of Object.entries(EFFECT_MAP)) {
+        if (effects[key]?.enabled) techniques.push(map.technique);
+      }
+
+      // Build INI sections for effects that have slider values
+      const sectionLines = [];
+      for (const [key, map] of Object.entries(EFFECT_MAP)) {
+        if (map.iniSection && map.iniKey && effects[key]?.value !== undefined) {
+          sectionLines.push('', `[${map.iniSection}]`, `${map.iniKey}=${effects[key].value.toFixed(6)}`);
+        }
+      }
 
       const presetLines = [
         'PreprocessorDefinitions=',
         `Techniques=${techniques.join(',')}`,
         `TechniqueSorting=${techniques.join(',')}`,
-        '',
-        '[LumaSharpen.fx]',
-        `sharp_strength=${(effects.sharpening?.value ?? 0.60).toFixed(6)}`,
-        '',
-        '[Vibrance.fx]',
-        `Vibrance=${(effects.saturation?.value ?? 0.50).toFixed(6)}`,
-        '',
-        '[Bloom.fx]',
-        `BloomIntensity=${(effects.bloom?.value ?? 0.20).toFixed(6)}`,
-        '',
-        '[FilmGrain.fx]',
-        `Intensity=${(effects.filmGrain?.value ?? 0.30).toFixed(6)}`,
+        ...sectionLines,
         '',
       ];
 
