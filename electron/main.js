@@ -99,11 +99,15 @@ let mainWindow;
 let tray = null;
 let minimizeToTray = false;
 
-function createTray() {
+function getAppIcon() {
   const iconPath = isDev
-    ? path.join(__dirname, '..', 'public', 'favicon.ico')
-    : path.join(__dirname, '..', 'build', 'favicon.ico');
-  const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+    ? path.join(__dirname, '..', 'public', 'crystal.ico')
+    : path.join(__dirname, '..', 'build', 'crystal.ico');
+  return fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+}
+
+function createTray() {
+  const icon = getAppIcon();
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip('XI Launcher');
   const contextMenu = Menu.buildFromTemplate([
@@ -122,6 +126,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     frame: false,
+    icon: getAppIcon(),
     backgroundColor: '#0a0c10',
     webPreferences: {
       nodeIntegration: false,
