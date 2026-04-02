@@ -200,6 +200,54 @@
   margin-bottom: 12px;
 }
 
+.hdpack-manual-hint {
+  font-size: 12px;
+  color: var(--text-muted, var(--text-secondary));
+  font-style: italic;
+  margin: 6px 0 0 0;
+}
+
+.hdpack-manual-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hdpack-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hdpack-dl-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hdpack-cancel-btn {
+  color: var(--red, #f87171) !important;
+}
+
+.btn-xs {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.hdpack-step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--teal, #2dd4bf);
+  color: #000;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 .hdpack-resolution {
   display: flex;
   align-items: center;

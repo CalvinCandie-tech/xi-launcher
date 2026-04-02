@@ -78,6 +78,9 @@ async function initStore() {
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// Active HD pack download streams — keyed by packName for pause/resume/cancel
+const activeDownloads = {};
+
 // Runtime folder — always relative to the app root so bundled files stay in one place
 const appRoot = isDev ? path.join(__dirname, '..') : path.dirname(app.getPath('exe'));
 const runtimeDir = path.join(appRoot, 'runtime');
@@ -1499,7 +1502,9 @@ function registerIPC() {
             const estimatedTotal = totalBytes > 0 ? totalBytes : (repoInfo.size ? repoInfo.size * 1024 : 0);
             let receivedBytes = 0;
             const file = fs.createWriteStream(tmpZip);
+            activeDownloads[packName] = { response: res, file, cancelled: false };
             res.on('data', (chunk) => {
+              if (activeDownloads[packName]?.cancelled) return;
               receivedBytes += chunk.length;
               file.write(chunk);
               const mb = (receivedBytes / 1048576).toFixed(1);
@@ -1511,9 +1516,13 @@ function registerIPC() {
                 sendProgress('download', Math.min(60, Math.round(receivedBytes / 50000)), `Downloading... ${mb} MB`);
               }
             });
-            res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
-          }).on('error', reject);
+            res.on('end', () => {
+              delete activeDownloads[packName];
+              file.end();
+              file.on('finish', resolve);
+            });
+            res.on('error', (err) => { delete activeDownloads[packName]; reject(err); });
+          }).on('error', (err) => { delete activeDownloads[packName]; reject(err); });
         };
         download(zipUrl);
       });
@@ -1607,6 +1616,130 @@ function registerIPC() {
     }
   });
 
+  // Install an HD pack from a user-selected local zip (for Nexus-only packs)
+  ipcMain.handle('install-hdpack-manual', async (_, ashitaPath, packName) => {
+    try {
+      const downloadsPath = app.getPath('downloads');
+      const { filePaths } = await dialog.showOpenDialog(mainWindow, {
+        title: `Select ${packName} zip file`,
+        defaultPath: downloadsPath,
+        filters: [{ name: 'Zip Archives', extensions: ['zip'] }],
+        properties: ['openFile']
+      });
+
+      if (!filePaths || filePaths.length === 0) {
+        return { success: false, error: 'No file selected.' };
+      }
+
+      const zipPath = filePaths[0];
+
+      const pivotIni = path.join(ashitaPath, 'config', 'pivot', 'pivot.ini');
+      let datsRoot = path.join(ashitaPath, 'polplugins', 'DATs');
+      if (fs.existsSync(pivotIni)) {
+        const iniContent = fs.readFileSync(pivotIni, 'utf-8');
+        const rootMatch = iniContent.match(/root_path\s*=\s*(.+)/i);
+        if (rootMatch && rootMatch[1].trim()) datsRoot = rootMatch[1].trim();
+      }
+
+      const sendProgress = (phase, percent, detail) => {
+        try { mainWindow?.webContents?.send('hdpack-progress', packName, phase, percent, detail); } catch {}
+      };
+
+      sendProgress('extract', 10, 'Extracting files...');
+
+      const tmpExtract = path.join(os.tmpdir(), `hdpack-${packName}-extract`);
+      if (fs.existsSync(tmpExtract)) {
+        fs.rmSync(tmpExtract, { recursive: true, force: true });
+      }
+      fs.mkdirSync(tmpExtract, { recursive: true });
+      await extractZip(zipPath, tmpExtract, (pct, file) => {
+        sendProgress('extract', 10 + Math.round(pct * 0.6), `Extracting... ${pct}% — ${path.basename(file)}`);
+      });
+
+      // Find the inner directory with ROM folders
+      const extracted = fs.readdirSync(tmpExtract);
+      let innerDir = extracted.length === 1 && fs.statSync(path.join(tmpExtract, extracted[0])).isDirectory()
+        ? path.join(tmpExtract, extracted[0])
+        : tmpExtract;
+
+      const innerContents = fs.readdirSync(innerDir);
+      const subDirs = innerContents.filter(f => fs.statSync(path.join(innerDir, f)).isDirectory());
+      const isDatDir = (name) => /^(ROM|sound)\d*$/i.test(name);
+      const hasRomDirs = subDirs.some(d => isDatDir(d));
+      if (!hasRomDirs && subDirs.length === 1) {
+        const candidate = path.join(innerDir, subDirs[0]);
+        const candidateContents = fs.readdirSync(candidate);
+        if (candidateContents.some(f => isDatDir(f))) {
+          innerDir = candidate;
+        }
+      }
+
+      sendProgress('copy', 75, 'Moving files to DATs folder...');
+
+      const destDir = path.join(datsRoot, packName);
+      if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
+      if (!fs.existsSync(datsRoot)) fs.mkdirSync(datsRoot, { recursive: true });
+
+      let moved = false;
+      try {
+        fs.renameSync(innerDir, destDir);
+        moved = true;
+      } catch {}
+
+      if (!moved) {
+        try {
+          execSync(`robocopy "${innerDir}" "${destDir}" /E /MOVE /NFL /NDL /NJH /NJS /NS /NC /R:1 /W:0`, { timeout: 600000 });
+          moved = true;
+        } catch (e) {
+          if (e.status < 8) moved = true;
+        }
+      }
+
+      if (!moved) {
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+        copyRecursive(innerDir, destDir);
+      }
+
+      const fileCount = countFiles(destDir);
+
+      sendProgress('done', 100, `Installed — ${fileCount} files`);
+
+      try { fs.rmSync(tmpExtract, { recursive: true, force: true }); } catch {}
+
+      return {
+        success: true,
+        message: `${packName} installed — ${fileCount} files extracted to ${destDir}`
+      };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Pause/resume/cancel active HD pack downloads
+  ipcMain.handle('hdpack-pause', (_, packName) => {
+    const dl = activeDownloads[packName];
+    if (dl?.response) { dl.response.pause(); return { success: true }; }
+    return { success: false };
+  });
+
+  ipcMain.handle('hdpack-resume', (_, packName) => {
+    const dl = activeDownloads[packName];
+    if (dl?.response) { dl.response.resume(); return { success: true }; }
+    return { success: false };
+  });
+
+  ipcMain.handle('hdpack-cancel', (_, packName) => {
+    const dl = activeDownloads[packName];
+    if (dl) {
+      dl.cancelled = true;
+      try { dl.response.destroy(); } catch {}
+      try { dl.file.destroy(); } catch {}
+      delete activeDownloads[packName];
+      return { success: true };
+    }
+    return { success: false };
+  });
+
   // Download and install an HD pack from a GitHub release asset (e.g. Remapster)
   ipcMain.handle('install-hdpack-release', async (_, ashitaPath, packName, repoUrl, resolution) => {
 
@@ -1686,7 +1819,9 @@ function registerIPC() {
             const totalBytes = parseInt(res.headers['content-length'] || String(asset.size), 10);
             let receivedBytes = 0;
             const file = fs.createWriteStream(tmpZip);
+            activeDownloads[packName] = { response: res, file, cancelled: false };
             res.on('data', (chunk) => {
+              if (activeDownloads[packName]?.cancelled) return;
               receivedBytes += chunk.length;
               file.write(chunk);
               const mb = (receivedBytes / 1048576).toFixed(1);
@@ -1694,9 +1829,13 @@ function registerIPC() {
               const pct = totalBytes > 0 ? Math.round((receivedBytes / totalBytes) * 70) : Math.min(60, Math.round(receivedBytes / 50000));
               sendProgress('download', pct, `Downloading... ${mb} MB / ${totalMb} MB`);
             });
-            res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
-          }).on('error', reject);
+            res.on('end', () => {
+              delete activeDownloads[packName];
+              file.end();
+              file.on('finish', resolve);
+            });
+            res.on('error', (err) => { delete activeDownloads[packName]; reject(err); });
+          }).on('error', (err) => { delete activeDownloads[packName]; reject(err); });
         };
         download(asset.browser_download_url);
       });

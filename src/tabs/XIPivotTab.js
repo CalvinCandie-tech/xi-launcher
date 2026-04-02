@@ -4,16 +4,19 @@ import './XIPivotTab.css';
 const api = window.xiAPI;
 
 const HD_PACKS = [
-  { name: 'XiView', desc: 'HD UI overhaul — status icons, fonts, GUI elements, and menu skins for modern resolutions', url: 'https://github.com/KenshiDRK/XiView', variants: ['Normal', 'Widescreen'] },
+  { name: 'AshenbubsHD', desc: 'Massive HD upscale project — 232,000+ textures covering armor, enemies, NPCs, magic effects, and more', url: 'https://github.com/Exarie/AshenbubsHD-Beta', conflictGroup: 'hdtextures' },
+  { name: 'NextGames HD', desc: 'HD texture packs by Amelila & RadialArcana — zones, monsters, furniture, trusts, mounts, weapons, and more. Two versions available: "NextHD" for high-quality replacements, or "NextLore" for a lore-friendly upscale closer to vanilla. Download your preferred version from Nexus Mods.', url: 'https://www.nexusmods.com/finalfantasy11/mods/12?tab=files', manual: true, conflictGroup: 'hdtextures' },
+  { name: 'XiView', desc: 'HD UI overhaul — status icons, fonts, GUI elements, and menu skins for modern resolutions', url: 'https://github.com/KenshiDRK/XiView', variants: ['Normal', 'Widescreen'], conflictGroup: 'ui' },
+  { name: 'XITide', desc: 'HD font and icon replacement — damage numbers, gil values, status icons, linkshell icons, and more (by Ashenbubs)', url: 'https://github.com/CalvinCandie-tech/XITide-Font-Pack', releaseAsset: true, conflictGroup: 'ui' },
   { name: 'FFXI-Vision', desc: 'Cleaner, more detailed zone maps — an overhaul of the stock in-game map files', url: 'https://github.com/Drauku/FFXI-Vision', conflictGroup: 'maps' },
   { name: 'Remapster', desc: 'Hand-drawn zone maps with fine detail — cities, dungeons, open world. Available in 1024 or 2048 resolution', url: 'https://github.com/AkadenTK/remapster_maps', releaseAsset: true, resolutions: true, conflictGroup: 'maps' },
-  { name: 'AshenbubsHD', desc: 'Massive HD upscale project — 232,000+ textures covering armor, enemies, NPCs, magic effects, and more', url: 'https://github.com/Exarie/AshenbubsHD-Beta' },
-  { name: 'XITide', desc: 'HD font and icon replacement — damage numbers, gil values, status icons, linkshell icons, and more (by Ashenbubs)', url: 'https://github.com/CalvinCandie-tech/XITide-Font-Pack', releaseAsset: true },
   { name: 'LoFi-FFXI', desc: 'Lo-fi music replacements for FFXI — chill, relaxed versions of in-game BGM tracks', url: 'https://github.com/CatsAndBoats/LoFi-FFXI', conflictGroup: 'music' },
   { name: 'SkyrimXI', desc: 'Skyrim OST mood-matched to FFXI zones — epic orchestral music for towns, fields, dungeons, and battles', url: 'https://github.com/CalvinCandie-tech/SkyrimXI-Music-Pack', releaseAsset: true, conflictGroup: 'music' }
 ];
 
 const CONFLICT_GROUP_LABELS = {
+  hdtextures: 'HD Texture Pack',
+  ui: 'UI Pack',
   maps: 'Map Pack',
   music: 'Music Pack'
 };
@@ -201,7 +204,9 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
     setHdPackStatus(prev => ({ ...prev, [pack.name]: { status: 'installing', message: 'Starting download...', percent: 0 } }));
 
     let result;
-    if (pack.releaseAsset) {
+    if (pack.manual) {
+      result = await api.installHDPackManual(config.ashitaPath, pack.name);
+    } else if (pack.releaseAsset) {
       result = await api.installHDPackRelease(config.ashitaPath, pack.name, pack.url, remapsterRes);
     } else {
       const subdir = pack.variants ? (pack.name === 'XiView' ? xiviewVariant : null) : null;
@@ -210,7 +215,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
     if (result.success) {
       // Remove conflicting packs from overlays
       let newOverlays = [...pivotConfig.overlays];
-      if (pack.conflictGroup) {
+      if (pack.conflictGroup && pack.conflictGroup !== 'hdtextures' && pack.conflictGroup !== 'ui') {
         const conflicting = HD_PACKS
           .filter(p => p.conflictGroup === pack.conflictGroup && p.name !== pack.name)
           .map(p => p.name);
@@ -230,6 +235,23 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
     } else {
       setHdPackStatus(prev => ({ ...prev, [pack.name]: { status: 'error', message: result.error, percent: 0 } }));
     }
+  };
+
+  const pauseHDPack = async (packName) => {
+    const ps = hdPackStatus[packName];
+    if (!ps) return;
+    if (ps.paused) {
+      await api.hdpackResume(packName);
+      setHdPackStatus(prev => ({ ...prev, [packName]: { ...prev[packName], paused: false } }));
+    } else {
+      await api.hdpackPause(packName);
+      setHdPackStatus(prev => ({ ...prev, [packName]: { ...prev[packName], paused: true } }));
+    }
+  };
+
+  const cancelHDPack = async (packName) => {
+    await api.hdpackCancel(packName);
+    setHdPackStatus(prev => ({ ...prev, [packName]: { status: 'error', message: 'Download cancelled.', percent: 0, paused: false } }));
   };
 
   return (
@@ -473,18 +495,22 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
       <div className="section-header">Popular HD Mod Packs</div>
       <p className="xipivot-hint">
         Click "Install" to automatically download the mod from GitHub and set it up as an XIPivot overlay.
+        Some packs are hosted on Nexus Mods — download the zip first, then click "Select Zip" to install.
         The files will be extracted to your DATs folder and registered in your config. Some packs are large and may take a minute to download.
       </p>
 
       {/* Render conflict groups first */}
       {Object.entries(CONFLICT_GROUP_LABELS).map(([groupKey, groupLabel]) => {
         const groupPacks = HD_PACKS.filter(p => p.conflictGroup === groupKey);
-        const activePack = groupPacks.find(p => pivotConfig.overlays.includes(p.name));
+        const activePacks = groupPacks.filter(p => pivotConfig.overlays.includes(p.name));
+        const isNonExclusive = groupKey === 'hdtextures' || groupKey === 'ui';
         return (
           <div key={groupKey} className="conflict-group panel">
             <div className="conflict-group-header">
-              <span className="conflict-group-label">{groupLabel} — choose one</span>
-              {activePack && <span className="pill pill-green xipivot-pill-tiny">Using {activePack.name}</span>}
+              <span className="conflict-group-label">{groupLabel}{isNonExclusive ? '' : ' — choose one'}</span>
+              {activePacks.length > 0 && activePacks.map(p => (
+                <span key={p.name} className="pill pill-green xipivot-pill-tiny">Using {p.name}</span>
+              ))}
             </div>
             <div className="conflict-group-cards">
               {groupPacks.map(pack => {
@@ -503,28 +529,61 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
                           <button className={`btn btn-sm ${remapsterRes === '2048' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => { setRemapsterRes('2048'); updateConfig('remapsterRes', '2048'); }}>2048</button>
                         </div>
                       )}
-                      <div className="hdpack-actions">
-                        <button
-                          className={`btn ${added ? 'btn-ghost' : 'btn-primary'} btn-sm`}
-                          onClick={() => installHDPack(pack)}
-                          disabled={isInstalling || (added && ps?.status === 'done')}
-                        >
-                          {isInstalling ? '◌ Downloading...' : added && ps?.status === 'done' ? '✓ Active' : added ? '↻ Reinstall' : 'Install'}
-                        </button>
-                        {pack.url && (
-                          <button className="btn btn-ghost btn-sm hdpack-link" onClick={() => api.openExternal(pack.url)}>GitHub ↗</button>
-                        )}
-                      </div>
+                      {pack.manual ? (
+                        <div className="hdpack-manual-steps">
+                          <div className="hdpack-step">
+                            <span className="hdpack-step-num">1</span>
+                            <button className="btn btn-primary btn-sm" onClick={() => api.openExternal(pack.url)}>
+                              Download from Nexus Mods ↗
+                            </button>
+                          </div>
+                          <div className="hdpack-step">
+                            <span className="hdpack-step-num">2</span>
+                            <button
+                              className={`btn ${added ? 'btn-ghost' : 'btn-teal'} btn-sm`}
+                              onClick={() => installHDPack(pack)}
+                              disabled={isInstalling || (added && ps?.status === 'done')}
+                            >
+                              {isInstalling ? '◌ Installing...' : added && ps?.status === 'done' ? '✓ Active' : added ? '↻ Reinstall' : 'Select Downloaded Zip'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="hdpack-actions">
+                          <button
+                            className={`btn ${added ? 'btn-ghost' : 'btn-primary'} btn-sm`}
+                            onClick={() => installHDPack(pack)}
+                            disabled={isInstalling || (added && ps?.status === 'done')}
+                          >
+                            {isInstalling ? '◌ Installing...' : added && ps?.status === 'done' ? '✓ Active' : added ? '↻ Reinstall' : 'Install'}
+                          </button>
+                          {pack.url && (
+                            <button className="btn btn-ghost btn-sm hdpack-link" onClick={() => api.openExternal(pack.url)}>GitHub ↗</button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     {ps && (
                       <div className="hdpack-progress-area">
                         {ps.status === 'installing' && (
-                          <div className="hdpack-progress-row">
-                            <div className="hdpack-progress-bar">
-                              <div className="hdpack-progress-fill" style={{ width: `${ps.percent || 0}%` }} />
+                          <>
+                            <div className="hdpack-progress-row">
+                              <div className="hdpack-progress-bar">
+                                <div className="hdpack-progress-fill" style={{ width: `${ps.percent || 0}%` }} />
+                              </div>
+                              <span className="hdpack-progress-pct">{Math.round(ps.percent || 0)}%</span>
                             </div>
-                            <span className="hdpack-progress-pct">{Math.round(ps.percent || 0)}%</span>
-                          </div>
+                            {!pack.manual && (
+                              <div className="hdpack-dl-controls">
+                                <button className="btn btn-ghost btn-xs" onClick={() => pauseHDPack(pack.name)}>
+                                  {ps.paused ? '▶ Resume' : '⏸ Pause'}
+                                </button>
+                                <button className="btn btn-ghost btn-xs hdpack-cancel-btn" onClick={() => cancelHDPack(pack.name)}>
+                                  ✕ Cancel
+                                </button>
+                              </div>
+                            )}
+                          </>
                         )}
                         <div className={`hdpack-status-msg ${ps.status === 'error' ? 'error' : ps.status === 'done' ? 'success' : ''}`}>
                           {ps.message}
@@ -557,27 +616,60 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
                   ))}
                 </div>
               )}
-              <div className="hdpack-actions">
-                <button
-                  className={`btn ${added ? 'btn-ghost' : 'btn-primary'} btn-sm`}
-                  onClick={() => installHDPack(pack)}
-                  disabled={isInstalling || (added && ps?.status === 'done')}
-                >
-                  {isInstalling ? '◌ Downloading...' : added && ps?.status === 'done' ? '✓ Installed' : added ? '↻ Reinstall' : 'Install'}
-                </button>
-                {pack.url && (
-                  <button className="btn btn-ghost btn-sm hdpack-link" onClick={() => api.openExternal(pack.url)}>GitHub ↗</button>
-                )}
-              </div>
+              {pack.manual ? (
+                <div className="hdpack-manual-steps">
+                  <div className="hdpack-step">
+                    <span className="hdpack-step-num">1</span>
+                    <button className="btn btn-primary btn-sm" onClick={() => api.openExternal(pack.url)}>
+                      Download from Nexus Mods ↗
+                    </button>
+                  </div>
+                  <div className="hdpack-step">
+                    <span className="hdpack-step-num">2</span>
+                    <button
+                      className={`btn ${added ? 'btn-ghost' : 'btn-teal'} btn-sm`}
+                      onClick={() => installHDPack(pack)}
+                      disabled={isInstalling || (added && ps?.status === 'done')}
+                    >
+                      {isInstalling ? '◌ Installing...' : added && ps?.status === 'done' ? '✓ Installed' : added ? '↻ Reinstall' : 'Select Downloaded Zip'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="hdpack-actions">
+                  <button
+                    className={`btn ${added ? 'btn-ghost' : 'btn-primary'} btn-sm`}
+                    onClick={() => installHDPack(pack)}
+                    disabled={isInstalling || (added && ps?.status === 'done')}
+                  >
+                    {isInstalling ? '◌ Installing...' : added && ps?.status === 'done' ? '✓ Installed' : added ? '↻ Reinstall' : 'Install'}
+                  </button>
+                  {pack.url && (
+                    <button className="btn btn-ghost btn-sm hdpack-link" onClick={() => api.openExternal(pack.url)}>GitHub ↗</button>
+                  )}
+                </div>
+              )}
               {ps && (
                 <div className="hdpack-progress-area">
                   {ps.status === 'installing' && (
-                    <div className="hdpack-progress-row">
-                      <div className="hdpack-progress-bar">
-                        <div className="hdpack-progress-fill" style={{ width: `${ps.percent || 0}%` }} />
+                    <>
+                      <div className="hdpack-progress-row">
+                        <div className="hdpack-progress-bar">
+                          <div className="hdpack-progress-fill" style={{ width: `${ps.percent || 0}%` }} />
+                        </div>
+                        <span className="hdpack-progress-pct">{Math.round(ps.percent || 0)}%</span>
                       </div>
-                      <span className="hdpack-progress-pct">{Math.round(ps.percent || 0)}%</span>
-                    </div>
+                      {!pack.manual && (
+                        <div className="hdpack-dl-controls">
+                          <button className="btn btn-ghost btn-xs" onClick={() => pauseHDPack(pack.name)}>
+                            {ps.paused ? '▶ Resume' : '⏸ Pause'}
+                          </button>
+                          <button className="btn btn-ghost btn-xs hdpack-cancel-btn" onClick={() => cancelHDPack(pack.name)}>
+                            ✕ Cancel
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                   <div className={`hdpack-status-msg ${ps.status === 'error' ? 'error' : ps.status === 'done' ? 'success' : ''}`}>
                     {ps.message}
