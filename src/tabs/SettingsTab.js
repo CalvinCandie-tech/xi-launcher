@@ -197,15 +197,16 @@ const PADSIN_ACTIONS = [
   'Active Window', 'Toggle UI', 'Menu Nav (hold)', 'Camera (hold)',
   'Logout', 'Move Up', 'Move Down', 'Move Left', 'Move Right',
   'Camera Up', 'Camera Down', 'Camera Left', 'Camera Right',
-  'Camera Zoom In', 'Camera Zoom Out', 'Camera Reset',
-  'Maintain Target', 'Screenshot', 'Prev Party Member'
+  'Menu Up (targeting)', 'Menu Down (targeting)', 'Menu Left (targeting)',
+  'Menu Right (targeting)', 'Screenshot', 'Toggle Controls'
 ];
 
 const PADSIN_GROUPS = [
   { name: 'Movement', indices: [13, 14, 15, 16, 0] },
-  { name: 'Camera', indices: [17, 18, 19, 20, 21, 22, 23, 2, 11] },
+  { name: 'Camera', indices: [17, 18, 19, 20, 2, 11] },
   { name: 'Menu / UI', indices: [7, 5, 6, 9, 10, 8, 12] },
-  { name: 'Combat / Targeting', indices: [4, 24, 1, 3] },
+  { name: 'Menu / Targeting', indices: [21, 22, 23, 24] },
+  { name: 'Combat', indices: [4, 1, 3] },
   { name: 'Other', indices: [25, 26] },
 ];
 
