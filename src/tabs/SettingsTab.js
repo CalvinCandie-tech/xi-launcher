@@ -796,7 +796,14 @@ function SettingsTab({ config, onSettingsSaved, onDirtyChange }) {
           <button
             key={nav.id}
             className="btn btn-ghost btn-sm"
-            onClick={() => document.getElementById(nav.id)?.scrollIntoView({ behavior: 'smooth' })}
+            onClick={() => {
+              const el = document.getElementById(nav.id);
+              const container = document.querySelector('.app-content');
+              if (el && container) {
+                const top = el.offsetTop - container.offsetTop - 60;
+                container.scrollTo({ top, behavior: 'smooth' });
+              }
+            }}
           >
             {nav.label}
           </button>
