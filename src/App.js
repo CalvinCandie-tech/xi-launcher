@@ -153,9 +153,29 @@ function App() {
   useEffect(() => {
     if (!api?.checkForUpdates) return;
     api.checkForUpdates().then(info => {
-      if (info && !info.upToDate && info.latest) setUpdateInfo(info);
+      if (info && !info.upToDate && !info.skipped && info.latest) setUpdateInfo(info);
     });
   }, []);
+
+  const handleManualUpdateCheck = async () => {
+    if (!api?.checkForUpdates) return null;
+    const info = await api.checkForUpdates();
+    if (info && !info.upToDate && info.latest) {
+      setUpdateInfo(info);
+      return info;
+    }
+    return info;
+  };
+
+  const handleSkipVersion = async (version) => {
+    if (!api?.skipUpdateVersion) return;
+    await api.skipUpdateVersion(version);
+    setUpdateInfo(null);
+  };
+
+  const handleDismissUpdate = () => {
+    setUpdateInfo(null);
+  };
 
   // Check for addon updates on startup
   useEffect(() => {
@@ -500,7 +520,7 @@ function App() {
   const renderTab = () => {
     const tabProps = { config, updateConfig };
     switch (activeTab) {
-      case 'home': return <HomeTab {...tabProps} onNavigate={guardedSetActiveTab} onLaunch={handleLaunch} isLaunching={isLaunching} launchLog={launchLog} updateInfo={updateInfo} onShowWizard={() => setShowWizard(true)} />;
+      case 'home': return <HomeTab {...tabProps} onNavigate={guardedSetActiveTab} onLaunch={handleLaunch} isLaunching={isLaunching} launchLog={launchLog} updateInfo={updateInfo} onManualUpdateCheck={handleManualUpdateCheck} onSkipVersion={handleSkipVersion} onDismissUpdate={handleDismissUpdate} onShowWizard={() => setShowWizard(true)} />;
       case 'profiles': return <ProfileTab {...tabProps} />;
       case 'addons': return <AddonsTab {...tabProps} />;
       case 'plugins': return <PluginsTab {...tabProps} />;
