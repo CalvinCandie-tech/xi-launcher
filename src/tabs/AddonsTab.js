@@ -207,7 +207,7 @@ const ADDON_HELP = {
 };
 
 
-function AddonsTab({ config, updateConfig }) {
+function AddonsTab({ config, updateConfig, onCheckAddonUpdates }) {
   const [installedAddons, setInstalledAddons] = useState([]);
   const [enabledAddons, setEnabledAddons] = useState([]);
   const [search, setSearch] = useState('');
@@ -221,9 +221,30 @@ function AddonsTab({ config, updateConfig }) {
   const [bundleAddons, setBundleAddons] = useState([]);
   const [showHelp, setShowHelp] = useState(false);
   const [pendingBundle, setPendingBundle] = useState(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [checkMsg, setCheckMsg] = useState('');
   const savePendingRef = useRef(null);
   const saveInProgressRef = useRef(false);
   const customBundles = config.customBundles || [];
+
+  const handleCheckUpdates = async () => {
+    if (!onCheckAddonUpdates) return;
+    setCheckingUpdates(true);
+    setCheckMsg('');
+    try {
+      const result = await onCheckAddonUpdates();
+      if (result?.updates?.length > 0) {
+        setCheckMsg('');
+      } else {
+        setCheckMsg('All addons up to date');
+        setTimeout(() => setCheckMsg(''), 3000);
+      }
+    } catch {
+      setCheckMsg('Check failed');
+      setTimeout(() => setCheckMsg(''), 3000);
+    }
+    setCheckingUpdates(false);
+  };
 
   const loadAddons = useCallback(async () => {
     if (!api) return;
@@ -582,6 +603,15 @@ function AddonsTab({ config, updateConfig }) {
 
   return (
     <div className="addons-tab">
+      <div className="addons-update-bar">
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={handleCheckUpdates}
+          disabled={checkingUpdates}
+        >
+          {checkingUpdates ? 'Checking...' : checkMsg || 'Check for Addon Updates'}
+        </button>
+      </div>
       <div className="panel addons-toolbar">
         <div className="addons-toolbar-left">
           <span className="addons-enabled-count cinzel">{enabledAddons.length}</span>

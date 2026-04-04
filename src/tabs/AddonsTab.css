@@ -763,3 +763,9 @@
   gap: 8px;
   margin-top: 16px;
 }
+
+.addons-update-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
