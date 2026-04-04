@@ -463,6 +463,109 @@ function registerIPC() {
     return { success: true };
   });
 
+  ipcMain.handle('download-and-install-update', async (_, downloadUrl) => {
+    const sendProgress = (percent, detail) => {
+      try { mainWindow?.webContents?.send('update-download-progress', percent, detail); } catch {}
+    };
+
+    try {
+      if (!downloadUrl) return { success: false, error: 'No download URL provided' };
+
+      sendProgress(0, 'Starting download...');
+
+      const tmpDir = path.join(os.tmpdir(), 'xi-launcher-update');
+      if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      const tmpFile = path.join(tmpDir, 'update.zip');
+
+      // Download the zip
+      await new Promise((resolve, reject) => {
+        const download = (url) => {
+          https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
+            if (res.statusCode === 302 || res.statusCode === 301) {
+              return download(res.headers.location);
+            }
+            if (res.statusCode !== 200) {
+              return reject(new Error(`Download failed with status ${res.statusCode}`));
+            }
+            const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+            let receivedBytes = 0;
+            const file = fs.createWriteStream(tmpFile);
+            res.on('data', (chunk) => {
+              receivedBytes += chunk.length;
+              file.write(chunk);
+              const mb = (receivedBytes / 1048576).toFixed(1);
+              if (totalBytes > 0) {
+                const pct = Math.round((receivedBytes / totalBytes) * 70);
+                const totalMb = (totalBytes / 1048576).toFixed(1);
+                sendProgress(pct, `Downloading... ${mb} / ${totalMb} MB`);
+              } else {
+                sendProgress(Math.min(70, Math.round(receivedBytes / 50000)), `Downloading... ${mb} MB`);
+              }
+            });
+            res.on('end', () => { file.end(); file.on('finish', resolve); });
+            res.on('error', reject);
+          }).on('error', reject);
+        };
+        download(downloadUrl);
+      });
+
+      sendProgress(75, 'Extracting update...');
+
+      const extractDir = path.join(tmpDir, 'extracted');
+      fs.mkdirSync(extractDir, { recursive: true });
+      await extractZip(tmpFile, extractDir);
+
+      sendProgress(85, 'Installing update...');
+
+      // Find the root of the extracted content — may be nested in a folder
+      let sourceDir = extractDir;
+      const entries = fs.readdirSync(extractDir);
+      if (entries.length === 1) {
+        const single = path.join(extractDir, entries[0]);
+        if (fs.statSync(single).isDirectory()) {
+          sourceDir = single;
+        }
+      }
+
+      // Copy files to app directory, skipping runtime/ and node_modules/
+      const copyRecursive = (src, dest) => {
+        const items = fs.readdirSync(src);
+        for (const item of items) {
+          if (item === 'runtime' || item === 'node_modules') continue;
+          const srcPath = path.join(src, item);
+          const destPath = path.join(dest, item);
+          const stat = fs.statSync(srcPath);
+          if (stat.isDirectory()) {
+            if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
+            copyRecursive(srcPath, destPath);
+          } else {
+            fs.copyFileSync(srcPath, destPath);
+          }
+        }
+      };
+
+      copyRecursive(sourceDir, appRoot);
+
+      sendProgress(95, 'Cleaning up...');
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+
+      sendProgress(100, 'Restarting...');
+
+      // Small delay so the renderer sees "Restarting..."
+      setTimeout(() => {
+        app.relaunch();
+        app.exit(0);
+      }, 1000);
+
+      return { success: true };
+    } catch (e) {
+      sendProgress(0, '');
+      return { success: false, error: e.message || 'Update failed' };
+    }
+  });
+
   ipcMain.handle('open-external', async (_, url) => {
     if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
       await shell.openExternal(url);
