@@ -4,7 +4,7 @@ import { DEFAULT_PROFILE_INI } from '../utils/profileTemplates';
 
 const api = window.xiAPI;
 
-function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, launchLog, updateInfo, onShowWizard }) {
+function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, launchLog, updateInfo, onManualUpdateCheck, onSkipVersion, onDismissUpdate, onShowWizard }) {
   const [status, setStatus] = useState({ ashita: false, ffxi: false, xiloader: false, profileCount: 0 });
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -19,6 +19,10 @@ function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, laun
   const [multiBoxLaunching, setMultiBoxLaunching] = useState(false);
   const [multiBoxLog, setMultiBoxLog] = useState('');
   const [serverStatus, setServerStatus] = useState(null); // { online, latency }
+  const [updateDlStatus, setUpdateDlStatus] = useState(''); // '' | 'downloading' | 'installing' | 'error'
+  const [updateDlProgress, setUpdateDlProgress] = useState({ percent: 0, detail: '' });
+  const [updateDlError, setUpdateDlError] = useState('');
+  const [manualCheckMsg, setManualCheckMsg] = useState('');
 
   // Close profile dropdown when clicking outside
   useEffect(() => {
@@ -139,6 +143,39 @@ function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, laun
     return () => clearInterval(interval);
   }, [config.serverHost, config.serverPort]);
 
+  // Listen for update download progress
+  useEffect(() => {
+    if (!api?.onUpdateProgress) return;
+    const unsub = api.onUpdateProgress((percent, detail) => {
+      setUpdateDlProgress({ percent, detail });
+      if (percent >= 85) setUpdateDlStatus('installing');
+    });
+    return unsub;
+  }, []);
+
+  const handleDownloadUpdate = async () => {
+    if (!api?.downloadAndInstallUpdate || !updateInfo?.downloadUrl) return;
+    setUpdateDlStatus('downloading');
+    setUpdateDlError('');
+    setUpdateDlProgress({ percent: 0, detail: 'Starting...' });
+    const result = await api.downloadAndInstallUpdate(updateInfo.downloadUrl);
+    if (!result.success) {
+      setUpdateDlStatus('error');
+      setUpdateDlError(result.error || 'Update failed');
+    }
+  };
+
+  const handleManualCheck = async () => {
+    setManualCheckMsg('Checking...');
+    const info = await onManualUpdateCheck();
+    if (!info || info.upToDate) {
+      setManualCheckMsg('You are on the latest version');
+      setTimeout(() => setManualCheckMsg(''), 3000);
+    } else {
+      setManualCheckMsg('');
+    }
+  };
+
   const setupComplete = status.ashita && status.ffxi && config.activeProfile;
   const stepsComplete = [status.ashita, status.ffxi, !!config.activeProfile].filter(Boolean).length;
 
@@ -156,13 +193,59 @@ function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, laun
       {/* Right side — status panel */}
       <div className="home-right">
         {/* Update notification */}
-        {updateInfo && (
-          <div className="home-panel-section home-update-banner" onClick={() => api?.openExternal(updateInfo.releaseUrl)}>
+        {updateInfo && updateDlStatus === '' && (
+          <div className="home-panel-section home-update-banner">
             <div className="home-update-row">
               <span className="home-update-title">Update Available</span>
+              <div className="home-update-row-right">
+                <span className="pill pill-gold pill-xs">v{updateInfo.latest}</span>
+                <button className="home-update-dismiss" onClick={onDismissUpdate} aria-label="Dismiss">✕</button>
+              </div>
+            </div>
+            {updateInfo.releaseNotes && (
+              <p className="home-update-notes">{updateInfo.releaseNotes.split('\n')[0]}</p>
+            )}
+            <div className="home-update-actions">
+              <button className="btn btn-primary btn-sm" onClick={handleDownloadUpdate}>
+                Download & Install
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => onSkipVersion(updateInfo.latest)}>
+                Skip this version
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Update downloading */}
+        {updateInfo && (updateDlStatus === 'downloading' || updateDlStatus === 'installing') && (
+          <div className="home-panel-section home-update-banner">
+            <div className="home-update-row">
+              <span className="home-update-title">
+                {updateDlStatus === 'installing' ? 'Installing...' : 'Downloading update...'}
+              </span>
               <span className="pill pill-gold pill-xs">v{updateInfo.latest}</span>
             </div>
-            <p className="home-update-desc">Click to download the latest version</p>
+            <div className="home-update-progress">
+              <div className="home-progress-bar">
+                <div className="home-progress-fill" style={{ width: `${updateDlProgress.percent}%` }} />
+              </div>
+              <span className="home-progress-text">{updateDlProgress.percent}%</span>
+            </div>
+            <p className="home-update-detail">{updateDlProgress.detail}</p>
+          </div>
+        )}
+
+        {/* Update error */}
+        {updateInfo && updateDlStatus === 'error' && (
+          <div className="home-panel-section home-update-banner home-update-error">
+            <div className="home-update-row">
+              <span className="home-update-title">Update Failed</span>
+              <button className="home-update-dismiss" onClick={() => { setUpdateDlStatus(''); setUpdateDlError(''); }} aria-label="Dismiss">✕</button>
+            </div>
+            <p className="home-update-notes">{updateDlError}</p>
+            <button className="btn btn-primary btn-sm" onClick={handleDownloadUpdate}>
+              Retry
+            </button>
           </div>
         )}
 
@@ -381,11 +464,16 @@ function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, laun
           </div>
         )}
 
-        {setupComplete && onShowWizard && (
+        {setupComplete && (
           <div className="home-panel-section home-panel-divider home-panel-center">
-            <button className="btn btn-ghost btn-sm" onClick={onShowWizard}>
-              Re-run Setup Wizard
+            <button className="btn btn-ghost btn-sm" onClick={handleManualCheck}>
+              {manualCheckMsg || 'Check for Updates'}
             </button>
+            {onShowWizard && (
+              <button className="btn btn-ghost btn-sm" onClick={onShowWizard} style={{ marginTop: 4 }}>
+                Re-run Setup Wizard
+              </button>
+            )}
           </div>
         )}
 
