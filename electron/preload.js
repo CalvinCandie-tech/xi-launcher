@@ -68,6 +68,13 @@ contextBridge.exposeInMainWorld('xiAPI', {
   // Update checker
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  downloadAndInstallUpdate: (downloadUrl) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
+  onUpdateProgress: (callback) => {
+    const handler = (_, percent, detail) => callback(percent, detail);
+    ipcRenderer.on('update-download-progress', handler);
+    return () => ipcRenderer.removeListener('update-download-progress', handler);
+  },
+  skipUpdateVersion: (version) => ipcRenderer.invoke('skip-update-version', version),
 
   // Shell
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
