@@ -180,13 +180,23 @@ function App() {
   // Check for addon updates on startup
   useEffect(() => {
     if (!api?.checkAddonUpdates || !config?.ashitaPath) return;
-    const communityAddons = ADDON_CATALOGUE.filter(a => a.category === 'Community' && a.repo);
-    api.checkAddonUpdates(communityAddons).then(result => {
+    const repoAddons = ADDON_CATALOGUE.filter(a => a.repo);
+    api.checkAddonUpdates(repoAddons).then(result => {
       if (result?.updates?.length > 0) {
         setAddonUpdates(result.updates);
       }
     });
   }, [config?.ashitaPath]);
+
+  const handleManualAddonCheck = async () => {
+    if (!api?.checkAddonUpdates) return { updates: [] };
+    const repoAddons = ADDON_CATALOGUE.filter(a => a.repo);
+    const result = await api.checkAddonUpdates(repoAddons, true);
+    if (result?.updates?.length > 0) {
+      setAddonUpdates(result.updates);
+    }
+    return result;
+  };
 
   // Music player
   const autoPlayedRef = useRef(false);
@@ -522,7 +532,7 @@ function App() {
     switch (activeTab) {
       case 'home': return <HomeTab {...tabProps} onNavigate={guardedSetActiveTab} onLaunch={handleLaunch} isLaunching={isLaunching} launchLog={launchLog} updateInfo={updateInfo} onManualUpdateCheck={handleManualUpdateCheck} onSkipVersion={handleSkipVersion} onDismissUpdate={handleDismissUpdate} onShowWizard={() => setShowWizard(true)} />;
       case 'profiles': return <ProfileTab {...tabProps} />;
-      case 'addons': return <AddonsTab {...tabProps} />;
+      case 'addons': return <AddonsTab {...tabProps} onCheckAddonUpdates={handleManualAddonCheck} />;
       case 'plugins': return <PluginsTab {...tabProps} />;
       // Script editor is now embedded in ProfileTab
       case 'settings': return <SettingsTab {...tabProps} config={config} onSettingsSaved={() => saveCurrentProfileSettings(config)} onDirtyChange={setSettingsDirty} />;
