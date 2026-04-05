@@ -511,6 +511,33 @@
   margin-bottom: 8px;
 }
 
+.custom-mod-input-panel {
+  margin-bottom: 12px;
+}
+
+.custom-mod-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.custom-mod-error {
+  color: var(--red, #ff4d4f);
+  font-size: var(--text-xs, 11px);
+  margin-top: 6px;
+}
+
+.custom-mods-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.custom-mod-meta {
+  margin-bottom: 8px;
+}
+
 .xipivot-profile-banner-inactive {
   background: rgba(255, 255, 255, 0.03);
   border-color: rgba(255, 255, 255, 0.08);

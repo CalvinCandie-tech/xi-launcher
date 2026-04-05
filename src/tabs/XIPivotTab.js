@@ -34,6 +34,10 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
   const [laaMsg, setLaaMsg] = useState({ text: '', type: '' }); // type: success | error
   const [polExePath, setPolExePath] = useState('');
   const [profileOverlays, setProfileOverlays] = useState([]);
+  const [customMods, setCustomMods] = useState([]);
+  const [customModUrl, setCustomModUrl] = useState('');
+  const [customModStatus, setCustomModStatus] = useState({});
+  const [customModError, setCustomModError] = useState('');
 
   const checkLAA = useCallback(async () => {
     if (!api || !config.ffxiPath) return;
@@ -83,6 +87,21 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
   }, [config.activeProfile]);
 
   useEffect(() => { loadProfileOverlays(); }, [loadProfileOverlays]);
+
+  // Load custom mods list
+  useEffect(() => {
+    if (!api) return;
+    api.storeGet('customMods').then(mods => setCustomMods(mods || []));
+  }, []);
+
+  // Listen for custom mod install progress
+  useEffect(() => {
+    if (!api?.onCustomModProgress) return;
+    const cleanup = api.onCustomModProgress((modName, percent, detail) => {
+      setCustomModStatus(prev => ({ ...prev, [modName]: { status: 'installing', message: detail, percent } }));
+    });
+    return cleanup;
+  }, []);
 
   const saveProfileOverlays = async (newOverlays) => {
     if (!config.activeProfile) return;
@@ -205,6 +224,65 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
   const browseRoot = async () => {
     const result = await api.browseFolder(pivotConfig.rootPath || config.ashitaPath);
     if (result) await saveConfig({ rootPath: result });
+  };
+
+  const isValidModUrl = (url) => {
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' || u.protocol === 'http:';
+    } catch {
+      return false;
+    }
+  };
+
+  const installCustomMod = async () => {
+    const url = customModUrl.trim();
+    if (!url) return;
+    if (!isValidModUrl(url)) {
+      setCustomModError('Not a valid URL — paste a GitHub link or direct zip URL');
+      return;
+    }
+    setCustomModError('');
+
+    const info = await api.fetchGithubRepoInfo(url);
+    if (!info.success) {
+      setCustomModError(info.error);
+      return;
+    }
+
+    setCustomModStatus(prev => ({ ...prev, [info.name]: { status: 'installing', message: 'Starting...', percent: 0 } }));
+    setCustomModUrl('');
+
+    const result = await api.installCustomMod(config.ashitaPath, url);
+    if (result.success) {
+      const updatedMods = customMods.filter(m => m.name !== result.name);
+      updatedMods.push({ name: result.name, url, description: info.description || '', installedAt: new Date().toISOString() });
+      setCustomMods(updatedMods);
+      await api.storeSet('customMods', updatedMods);
+
+      if (config.activeProfile && !profileOverlays.includes(result.name)) {
+        await saveProfileOverlays([...profileOverlays, result.name]);
+      }
+
+      setCustomModStatus(prev => ({ ...prev, [result.name]: { status: 'done', message: result.message, percent: 100 } }));
+    } else {
+      setCustomModStatus(prev => ({ ...prev, [info.name]: { status: 'error', message: result.error, percent: 0 } }));
+    }
+  };
+
+  const removeCustomMod = async (modName) => {
+    const result = await api.removeCustomMod(config.ashitaPath, modName);
+    if (result.success) {
+      const updatedMods = customMods.filter(m => m.name !== modName);
+      setCustomMods(updatedMods);
+      await api.storeSet('customMods', updatedMods);
+
+      if (profileOverlays.includes(modName)) {
+        await saveProfileOverlays(profileOverlays.filter(n => n !== modName));
+      }
+
+      setCustomModStatus(prev => { const s = { ...prev }; delete s[modName]; return s; });
+    }
   };
 
   const [hdPackStatus, setHdPackStatus] = useState({}); // { packName: { status, message, percent } }
@@ -710,6 +788,94 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
           );
         })}
       </div>
+
+      <div className="section-header">Custom DAT Mods</div>
+      <p className="xipivot-hint">
+        Install custom DAT mods by pasting a GitHub repo URL, release URL, or any direct link to a .zip file.
+        Mods are extracted to your DATs folder and added to your active profile's overlay list.
+      </p>
+
+      <div className="panel custom-mod-input-panel">
+        <div className="custom-mod-input-row">
+          <input
+            type="text"
+            value={customModUrl}
+            onChange={e => { setCustomModUrl(e.target.value); setCustomModError(''); }}
+            onKeyDown={e => e.key === 'Enter' && installCustomMod()}
+            placeholder="Paste a GitHub link or direct zip URL..."
+            className="xipivot-flex-1"
+          />
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={installCustomMod}
+            disabled={!customModUrl.trim()}
+          >
+            Add
+          </button>
+        </div>
+        {customModError && (
+          <div className="custom-mod-error">{customModError}</div>
+        )}
+      </div>
+
+      {customMods.length > 0 && (
+        <div className="custom-mods-grid">
+          {customMods.map(mod => {
+            const ps = customModStatus[mod.name];
+            const isInstalling = ps?.status === 'installing';
+            const added = profileOverlays.includes(mod.name);
+            return (
+              <div key={mod.name} className={`panel hdpack-card ${added ? 'hdpack-installed' : ''}`}>
+                <h3 className="hdpack-name cinzel">{mod.name}</h3>
+                <p className="hdpack-desc">{mod.description || 'Custom DAT mod'}</p>
+                <div className="custom-mod-meta">
+                  <button className="btn btn-ghost btn-sm hdpack-link" onClick={() => api.openExternal(mod.url)}>Source ↗</button>
+                </div>
+                <div className="hdpack-actions">
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={async () => {
+                      setCustomModError('');
+                      setCustomModStatus(prev => ({ ...prev, [mod.name]: { status: 'installing', message: 'Starting...', percent: 0 } }));
+                      const result = await api.installCustomMod(config.ashitaPath, mod.url);
+                      if (result.success) {
+                        setCustomModStatus(prev => ({ ...prev, [mod.name]: { status: 'done', message: result.message, percent: 100 } }));
+                      } else {
+                        setCustomModStatus(prev => ({ ...prev, [mod.name]: { status: 'error', message: result.error, percent: 0 } }));
+                      }
+                    }}
+                    disabled={isInstalling}
+                  >
+                    {isInstalling ? '◌ Installing...' : '↻ Reinstall'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm xipivot-remove-btn"
+                    onClick={() => removeCustomMod(mod.name)}
+                    disabled={isInstalling}
+                  >
+                    Remove
+                  </button>
+                </div>
+                {ps && (
+                  <div className="hdpack-progress-area">
+                    {ps.status === 'installing' && (
+                      <div className="hdpack-progress-row">
+                        <div className="hdpack-progress-bar">
+                          <div className="hdpack-progress-fill" style={{ width: `${ps.percent || 0}%` }} />
+                        </div>
+                        <span className="hdpack-progress-pct">{Math.round(ps.percent || 0)}%</span>
+                      </div>
+                    )}
+                    <div className={`hdpack-status-msg ${ps.status === 'error' ? 'error' : ps.status === 'done' ? 'success' : ''}`}>
+                      {ps.message}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
     </div>
   );
