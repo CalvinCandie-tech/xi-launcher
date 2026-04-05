@@ -543,3 +543,9 @@
   border-color: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.4);
 }
+
+.custom-mod-missing {
+  font-size: var(--text-xs, 11px);
+  margin-left: 8px;
+  vertical-align: middle;
+}

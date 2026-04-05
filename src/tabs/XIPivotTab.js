@@ -38,6 +38,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
   const [customModUrl, setCustomModUrl] = useState('');
   const [customModStatus, setCustomModStatus] = useState({});
   const [customModError, setCustomModError] = useState('');
+  const [modFolderStatus, setModFolderStatus] = useState({});
 
   const checkLAA = useCallback(async () => {
     if (!api || !config.ffxiPath) return;
@@ -93,6 +94,19 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
     if (!api) return;
     api.storeGet('customMods').then(mods => setCustomMods(mods || []));
   }, []);
+
+  // Check if each custom mod's folder exists on disk
+  useEffect(() => {
+    if (!api || !config.ashitaPath || customMods.length === 0) return;
+    const datsRoot = config.ashitaPath + '\\polplugins\\DATs';
+    Promise.all(
+      customMods.map(mod =>
+        api.pathExists(datsRoot + '\\' + mod.name).then(exists => [mod.name, exists])
+      )
+    ).then(results => {
+      setModFolderStatus(Object.fromEntries(results));
+    });
+  }, [config.ashitaPath, customMods]);
 
   // Listen for custom mod install progress
   useEffect(() => {
@@ -440,18 +454,20 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
             ))}
           </div>
         )}
-        <div className="xipivot-add-row">
-          <input
-            type="text"
-            value={newOverlay}
-            onChange={e => setNewOverlay(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addOverlay()}
-            placeholder="Overlay folder name..."
-            className="xipivot-flex-1"
-          />
-          <button className="btn btn-ghost btn-sm" onClick={browseOverlay}>Browse</button>
-          <button className="btn btn-primary btn-sm" onClick={addOverlay} disabled={!newOverlay.trim()}>Add</button>
-        </div>
+        {config.activeProfile && (
+          <div className="xipivot-add-row">
+            <input
+              type="text"
+              value={newOverlay}
+              onChange={e => setNewOverlay(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addOverlay()}
+              placeholder="Overlay folder name..."
+              className="xipivot-flex-1"
+            />
+            <button className="btn btn-ghost btn-sm" onClick={browseOverlay}>Browse</button>
+            <button className="btn btn-primary btn-sm" onClick={addOverlay} disabled={!newOverlay.trim()}>Add</button>
+          </div>
+        )}
       </div>
 
       <div className="section-header">Memory Cache</div>
@@ -826,7 +842,12 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
             const added = profileOverlays.includes(mod.name);
             return (
               <div key={mod.name} className={`panel hdpack-card ${added ? 'hdpack-installed' : ''}`}>
-                <h3 className="hdpack-name cinzel">{mod.name}</h3>
+                <h3 className="hdpack-name cinzel">
+                  {mod.name}
+                  {modFolderStatus[mod.name] === false && (
+                    <span className="pill pill-red custom-mod-missing">Not found</span>
+                  )}
+                </h3>
                 <p className="hdpack-desc">{mod.description || 'Custom DAT mod'}</p>
                 <div className="custom-mod-meta">
                   <button className="btn btn-ghost btn-sm hdpack-link" onClick={() => api.openExternal(mod.url)}>Source ↗</button>
