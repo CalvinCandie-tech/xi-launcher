@@ -33,6 +33,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
   const [laaWorking, setLaaWorking] = useState(false);
   const [laaMsg, setLaaMsg] = useState({ text: '', type: '' }); // type: success | error
   const [polExePath, setPolExePath] = useState('');
+  const [profileOverlays, setProfileOverlays] = useState([]);
 
   const checkLAA = useCallback(async () => {
     if (!api || !config.ffxiPath) return;
@@ -70,6 +71,26 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
   useEffect(() => { checkLAA(); }, [checkLAA]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load per-profile overlays
+  const loadProfileOverlays = useCallback(async () => {
+    if (!api || !config.activeProfile) {
+      setProfileOverlays([]);
+      return;
+    }
+    const allOverlays = await api.storeGet('profileOverlays') || {};
+    setProfileOverlays(allOverlays[config.activeProfile] || []);
+  }, [config.activeProfile]);
+
+  useEffect(() => { loadProfileOverlays(); }, [loadProfileOverlays]);
+
+  const saveProfileOverlays = async (newOverlays) => {
+    if (!config.activeProfile) return;
+    setProfileOverlays(newOverlays);
+    const allOverlays = await api.storeGet('profileOverlays') || {};
+    allOverlays[config.activeProfile] = newOverlays;
+    await api.storeSet('profileOverlays', allOverlays);
+  };
 
   // Ensure 'pivot' is listed under [ashita.polplugins] in the active profile
   const ensurePivotInProfile = async () => {
@@ -142,22 +163,21 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
 
   const addOverlay = async () => {
     const name = newOverlay.trim();
-    if (!name || pivotConfig.overlays.includes(name)) return;
-    await saveConfig({ overlays: [...pivotConfig.overlays, name] });
+    if (!name || profileOverlays.includes(name)) return;
+    await saveProfileOverlays([...profileOverlays, name]);
     setNewOverlay('');
   };
 
   const removeOverlay = async (idx) => {
-    const overlays = pivotConfig.overlays.filter((_, i) => i !== idx);
-    await saveConfig({ overlays });
+    await saveProfileOverlays(profileOverlays.filter((_, i) => i !== idx));
   };
 
   const moveOverlay = async (idx, dir) => {
-    const overlays = [...pivotConfig.overlays];
+    const overlays = [...profileOverlays];
     const target = idx + dir;
     if (target < 0 || target >= overlays.length) return;
     [overlays[idx], overlays[target]] = [overlays[target], overlays[idx]];
-    await saveConfig({ overlays });
+    await saveProfileOverlays(overlays);
   };
 
   // Drag-and-drop reordering
@@ -167,11 +187,11 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
   const handleDrop = async (targetIdx) => {
     const fromIdx = dragIdx.current;
     if (fromIdx === null || fromIdx === targetIdx) return;
-    const overlays = [...pivotConfig.overlays];
+    const overlays = [...profileOverlays];
     const [moved] = overlays.splice(fromIdx, 1);
     overlays.splice(targetIdx, 0, moved);
     dragIdx.current = null;
-    await saveConfig({ overlays });
+    await saveProfileOverlays(overlays);
   };
 
   const browseOverlay = async () => {
@@ -214,7 +234,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
     }
     if (result.success) {
       // Remove conflicting packs from overlays
-      let newOverlays = [...pivotConfig.overlays];
+      let newOverlays = [...profileOverlays];
       if (pack.conflictGroup && pack.conflictGroup !== 'hdtextures' && pack.conflictGroup !== 'ui') {
         const conflicting = HD_PACKS
           .filter(p => p.conflictGroup === pack.conflictGroup && p.name !== pack.name)
@@ -230,7 +250,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
       if (!newOverlays.includes(pack.name)) {
         newOverlays.push(pack.name);
       }
-      await saveConfig({ overlays: newOverlays });
+      await saveProfileOverlays(newOverlays);
       setHdPackStatus(prev => ({ ...prev, [pack.name]: { status: 'done', message: result.message, percent: 100 } }));
     } else {
       setHdPackStatus(prev => ({ ...prev, [pack.name]: { status: 'error', message: result.error, percent: 0 } }));
@@ -264,9 +284,19 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
           <span className={`pill ${pivotConfig.exists ? 'pill-green' : 'pill-red'}`}>
             pivot.ini {pivotConfig.exists ? 'Found' : 'Not Found'}
           </span>
-          <span className="pill pill-teal">{pivotConfig.overlays.length} overlay{pivotConfig.overlays.length !== 1 ? 's' : ''}</span>
+          <span className="pill pill-teal">{profileOverlays.length} overlay{profileOverlays.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
+
+      {config.activeProfile ? (
+        <div className="xipivot-profile-banner">
+          Editing overlays for: <strong>{config.activeProfile}</strong>
+        </div>
+      ) : (
+        <div className="xipivot-profile-banner xipivot-profile-banner-inactive">
+          No active profile — select one on the Profiles tab
+        </div>
+      )}
 
       {!dllExists && (
         <div className="panel xipivot-install-panel">
@@ -310,11 +340,11 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
       <div className="section-header">Active Overlays</div>
       <div className="panel">
         <p className="xipivot-hint">Top = highest priority. Changes after launch may not affect already-loaded DATs.</p>
-        {pivotConfig.overlays.length === 0 ? (
+        {profileOverlays.length === 0 ? (
           <div className="xipivot-empty">No overlays configured. Add one below.</div>
         ) : (
           <div className="xipivot-overlay-list">
-            {pivotConfig.overlays.map((name, idx) => (
+            {profileOverlays.map((name, idx) => (
               <div key={idx} className="xipivot-overlay-row"
                 draggable
                 onDragStart={() => handleDragStart(idx)}
@@ -325,7 +355,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
                 <span className="xipivot-overlay-name mono">{name}</span>
                 <div className="xipivot-overlay-actions">
                   <button className="btn btn-ghost btn-sm" onClick={() => moveOverlay(idx, -1)} disabled={idx === 0}>▲</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => moveOverlay(idx, 1)} disabled={idx === pivotConfig.overlays.length - 1}>▼</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => moveOverlay(idx, 1)} disabled={idx === profileOverlays.length - 1}>▼</button>
                   <button className="btn btn-ghost btn-sm xipivot-remove-btn" onClick={() => removeOverlay(idx)}>✕</button>
                 </div>
               </div>
@@ -502,7 +532,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
       {/* Render conflict groups first */}
       {Object.entries(CONFLICT_GROUP_LABELS).map(([groupKey, groupLabel]) => {
         const groupPacks = HD_PACKS.filter(p => p.conflictGroup === groupKey);
-        const activePacks = groupPacks.filter(p => pivotConfig.overlays.includes(p.name));
+        const activePacks = groupPacks.filter(p => profileOverlays.includes(p.name));
         const isNonExclusive = groupKey === 'hdtextures' || groupKey === 'ui';
         return (
           <div key={groupKey} className="conflict-group panel">
@@ -514,7 +544,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
             </div>
             <div className="conflict-group-cards">
               {groupPacks.map(pack => {
-                const added = pivotConfig.overlays.includes(pack.name);
+                const added = profileOverlays.includes(pack.name);
                 const ps = hdPackStatus[pack.name];
                 const isInstalling = ps?.status === 'installing';
                 return (
@@ -601,7 +631,7 @@ function XIPivotTab({ config, updateConfig, onSettingsSaved }) {
       {/* Render non-conflicting packs in grid */}
       <div className="hdpacks-grid">
         {HD_PACKS.filter(p => !p.conflictGroup).map(pack => {
-          const added = pivotConfig.overlays.includes(pack.name);
+          const added = profileOverlays.includes(pack.name);
           const ps = hdPackStatus[pack.name];
           const isInstalling = ps?.status === 'installing';
           return (

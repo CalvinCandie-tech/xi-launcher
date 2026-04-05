@@ -500,3 +500,19 @@
   color: var(--text-dim);
   margin-top: 6px;
 }
+
+.xipivot-profile-banner {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: rgba(var(--teal-rgb, 0, 200, 180), 0.1);
+  border: 1px solid rgba(var(--teal-rgb, 0, 200, 180), 0.25);
+  color: var(--teal, #00c8b4);
+  font-size: var(--text-sm, 13px);
+  margin-bottom: 8px;
+}
+
+.xipivot-profile-banner-inactive {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+}
