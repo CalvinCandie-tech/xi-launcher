@@ -112,6 +112,26 @@ function validateRegValue(value) {
 function escapePSString(str) {
   return String(str).replace(/'/g, "''").replace(/`/g, '``').replace(/\$/g, '`$').replace(/"/g, '`"');
 }
+// Parse a URL to determine mod download type
+function parseModUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname === 'github.com') {
+      const parts = u.pathname.replace(/^\//, '').replace(/\/$/, '').split('/');
+      if (parts.length >= 2) {
+        const owner = parts[0];
+        const repo = parts[1];
+        if (parts.length >= 4 && parts[2] === 'releases') {
+          return { type: 'github-release', owner, repo, url };
+        }
+        return { type: 'github-repo', owner, repo, url: `https://github.com/${owner}/${repo}` };
+      }
+    }
+    return { type: 'direct-zip', url, name: path.basename(u.pathname, '.zip') || 'custom-mod' };
+  } catch {
+    return null;
+  }
+}
 function isAllowedPath(filePath) {
   const resolved = path.resolve(filePath);
   const ffxiPath = store?.get('ffxiPath');
@@ -1435,6 +1455,194 @@ function registerIPC() {
         version: releaseData.tag_name || 'latest',
         message: `XIPivot ${releaseData.tag_name || ''} installed to ${ashitaPath}`
       };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('fetch-github-repo-info', async (_, url) => {
+    const parsed = parseModUrl(url);
+    if (!parsed) return { success: false, error: 'Invalid URL' };
+    if (parsed.type === 'direct-zip') {
+      return { success: true, name: parsed.name, description: 'Custom DAT mod (direct download)', url };
+    }
+    try {
+      const data = await new Promise((resolve, reject) => {
+        https.get({
+          hostname: 'api.github.com',
+          path: `/repos/${parsed.owner}/${parsed.repo}`,
+          headers: { 'User-Agent': 'XI-Launcher' }
+        }, (res) => {
+          let body = '';
+          res.on('data', (chunk) => body += chunk);
+          res.on('end', () => {
+            try { resolve(JSON.parse(body)); }
+            catch { reject(new Error('Failed to parse GitHub response')); }
+          });
+        }).on('error', reject);
+      });
+      if (data.message === 'Not Found') return { success: false, error: 'Repository not found on GitHub' };
+      if (data.message && data.message.includes('rate limit')) return { success: false, error: 'GitHub rate limit reached — try again in a few minutes' };
+      return { success: true, name: data.name || parsed.repo, description: data.description || '', url };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('install-custom-mod', async (_, ashitaPath, url) => {
+    const parsed = parseModUrl(url);
+    if (!parsed) return { success: false, error: 'Invalid URL' };
+
+    const modName = parsed.type === 'direct-zip' ? parsed.name : parsed.repo;
+
+    const sendProgress = (percent, detail) => {
+      try { mainWindow?.webContents?.send('custom-mod-progress', modName, percent, detail); } catch {}
+    };
+
+    try {
+      const datsRoot = path.join(ashitaPath, 'polplugins', 'DATs');
+      if (!fs.existsSync(datsRoot)) fs.mkdirSync(datsRoot, { recursive: true });
+
+      let zipUrl;
+      let estimatedSize = 0;
+
+      if (parsed.type === 'github-repo') {
+        sendProgress(0, 'Fetching repo info from GitHub...');
+        const repoInfo = await new Promise((resolve, reject) => {
+          https.get({
+            hostname: 'api.github.com',
+            path: `/repos/${parsed.owner}/${parsed.repo}`,
+            headers: { 'User-Agent': 'XI-Launcher' }
+          }, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+              try { resolve(JSON.parse(body)); }
+              catch { reject(new Error('Failed to parse GitHub response')); }
+            });
+          }).on('error', reject);
+        });
+        if (repoInfo.message === 'Not Found') return { success: false, error: 'Repository not found on GitHub' };
+        if (repoInfo.message && repoInfo.message.includes('rate limit')) return { success: false, error: 'GitHub rate limit reached — try again in a few minutes' };
+        const branch = repoInfo.default_branch || 'main';
+        zipUrl = `https://github.com/${parsed.owner}/${parsed.repo}/archive/refs/heads/${branch}.zip`;
+        estimatedSize = repoInfo.size ? repoInfo.size * 1024 : 0;
+      } else if (parsed.type === 'github-release') {
+        sendProgress(0, 'Fetching latest release from GitHub...');
+        const releaseData = await new Promise((resolve, reject) => {
+          https.get({
+            hostname: 'api.github.com',
+            path: `/repos/${parsed.owner}/${parsed.repo}/releases/latest`,
+            headers: { 'User-Agent': 'XI-Launcher' }
+          }, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+              try { resolve(JSON.parse(body)); }
+              catch { reject(new Error('Failed to parse GitHub response')); }
+            });
+          }).on('error', reject);
+        });
+        if (releaseData.message === 'Not Found') return { success: false, error: 'No releases found for this repository' };
+        if (releaseData.message && releaseData.message.includes('rate limit')) return { success: false, error: 'GitHub rate limit reached — try again in a few minutes' };
+        const zipAsset = (releaseData.assets || []).find(a => a.name.endsWith('.zip'));
+        if (!zipAsset) {
+          zipUrl = releaseData.zipball_url;
+        } else {
+          zipUrl = zipAsset.browser_download_url;
+          estimatedSize = zipAsset.size || 0;
+        }
+      } else {
+        zipUrl = parsed.url;
+        sendProgress(0, 'Starting download...');
+      }
+
+      // Download zip
+      const tmpZip = path.join(os.tmpdir(), `custom-mod-${modName}.zip`);
+      await new Promise((resolve, reject) => {
+        const download = (downloadUrl) => {
+          const lib = downloadUrl.startsWith('https') ? https : require('http');
+          lib.get(downloadUrl, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
+            if (res.statusCode === 302 || res.statusCode === 301) {
+              return download(res.headers.location);
+            }
+            if (res.statusCode !== 200) {
+              return reject(new Error(`Download failed with status ${res.statusCode}`));
+            }
+            const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+            const total = totalBytes > 0 ? totalBytes : estimatedSize;
+            let received = 0;
+            const file = fs.createWriteStream(tmpZip);
+            res.on('data', (chunk) => {
+              received += chunk.length;
+              file.write(chunk);
+              const mb = (received / 1048576).toFixed(1);
+              if (total > 0) {
+                const pct = Math.min(70, Math.round((received / total) * 70));
+                const totalMb = (total / 1048576).toFixed(1);
+                sendProgress(pct, `Downloading... ${mb} MB / ${totalMb} MB`);
+              } else {
+                sendProgress(Math.min(60, Math.round(received / 50000)), `Downloading... ${mb} MB`);
+              }
+            });
+            res.on('end', () => { file.end(); file.on('finish', resolve); });
+            res.on('error', reject);
+          }).on('error', reject);
+        };
+        download(zipUrl);
+      });
+
+      // Extract
+      sendProgress(75, 'Extracting files...');
+      const tmpExtract = path.join(os.tmpdir(), `custom-mod-${modName}-extract`);
+      if (fs.existsSync(tmpExtract)) fs.rmSync(tmpExtract, { recursive: true, force: true });
+      fs.mkdirSync(tmpExtract, { recursive: true });
+      await extractZip(tmpZip, tmpExtract, (pct, file) => {
+        sendProgress(75 + Math.round(pct * 0.15), `Extracting... ${pct}% — ${path.basename(file)}`);
+      });
+
+      // Unwrap single top-level folder (GitHub zip pattern)
+      const extracted = fs.readdirSync(tmpExtract);
+      let innerDir = extracted.length === 1 && fs.statSync(path.join(tmpExtract, extracted[0])).isDirectory()
+        ? path.join(tmpExtract, extracted[0])
+        : tmpExtract;
+
+      // Unwrap nested DAT dirs (ROM/ROM2/etc.)
+      const innerContents = fs.readdirSync(innerDir);
+      const subDirs = innerContents.filter(f => fs.statSync(path.join(innerDir, f)).isDirectory());
+      const isDatDir = (name) => /^(ROM|sound)\d*$/i.test(name);
+      if (!subDirs.some(d => isDatDir(d)) && subDirs.length === 1) {
+        const candidate = path.join(innerDir, subDirs[0]);
+        if (fs.readdirSync(candidate).some(f => isDatDir(f))) {
+          innerDir = candidate;
+        }
+      }
+
+      // Copy to DATs folder
+      sendProgress(92, 'Installing to DATs folder...');
+      const destDir = path.join(datsRoot, modName);
+      if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
+      fs.cpSync(innerDir, destDir, { recursive: true });
+
+      // Cleanup temp files
+      try { fs.rmSync(tmpZip, { force: true }); } catch {}
+      try { fs.rmSync(tmpExtract, { recursive: true, force: true }); } catch {}
+
+      sendProgress(100, 'Done!');
+      return { success: true, name: modName, message: `${modName} installed to DATs folder` };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('remove-custom-mod', async (_, ashitaPath, modName) => {
+    try {
+      const datsRoot = path.join(ashitaPath, 'polplugins', 'DATs');
+      const modDir = path.join(datsRoot, modName);
+      if (fs.existsSync(modDir)) {
+        fs.rmSync(modDir, { recursive: true, force: true });
+      }
+      return { success: true };
     } catch (e) {
       return { success: false, error: e.message };
     }
