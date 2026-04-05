@@ -1586,7 +1586,7 @@ function registerIPC() {
               }
             });
             res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
+            res.on('error', (err) => { file.close(); reject(err); });
           }).on('error', reject);
         };
         download(zipUrl);
@@ -1621,6 +1621,9 @@ function registerIPC() {
       // Copy to DATs folder
       sendProgress(92, 'Installing to DATs folder...');
       const destDir = path.join(datsRoot, modName);
+      if (!path.resolve(destDir).startsWith(path.resolve(datsRoot) + path.sep)) {
+        return { success: false, error: 'Invalid mod name' };
+      }
       if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
       fs.cpSync(innerDir, destDir, { recursive: true });
 
@@ -1639,6 +1642,9 @@ function registerIPC() {
     try {
       const datsRoot = path.join(ashitaPath, 'polplugins', 'DATs');
       const modDir = path.join(datsRoot, modName);
+      if (!path.resolve(modDir).startsWith(path.resolve(datsRoot) + path.sep)) {
+        return { success: false, error: 'Invalid mod name' };
+      }
       if (fs.existsSync(modDir)) {
         fs.rmSync(modDir, { recursive: true, force: true });
       }
