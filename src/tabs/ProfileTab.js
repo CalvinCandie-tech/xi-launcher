@@ -91,9 +91,24 @@ function ProfileTab({ config, updateConfig }) {
     updateConfig('activeProfile', name);
   };
 
+  const [profileError, setProfileError] = useState('');
+
   const createProfile = async () => {
     const name = newProfileName.trim();
     if (!name) return;
+    if (/[\\/:*?"<>|]/.test(name)) {
+      setProfileError('Profile name cannot contain \\ / : * ? " < > |');
+      return;
+    }
+    if (name.length > 60) {
+      setProfileError('Profile name is too long (max 60 characters)');
+      return;
+    }
+    if (profiles.some(p => p.toLowerCase() === name.toLowerCase())) {
+      setProfileError(`A profile named "${name}" already exists`);
+      return;
+    }
+    setProfileError('');
     await api.saveProfile(config.ashitaPath, name, DEFAULT_PROFILE_INI(name, newProfileType, config.serverHost, config.serverPort, config.xiloaderPath, config.hairpin, config.loginUser, config.loginPass, config.ffxiPath));
     setNewProfileName('');
     await loadProfiles();
@@ -411,13 +426,14 @@ function ProfileTab({ config, updateConfig }) {
               type="text"
               placeholder="New profile name..."
               value={newProfileName}
-              onChange={e => setNewProfileName(e.target.value)}
+              onChange={e => { setNewProfileName(e.target.value); setProfileError(''); }}
               onKeyDown={e => e.key === 'Enter' && createProfile()}
             />
             <button className="btn btn-primary btn-sm" onClick={createProfile} disabled={!newProfileName.trim()}>
               Create
             </button>
           </div>
+          {profileError && <div className="profile-error">{profileError}</div>}
         </div>
 
         <div className="profile-editor panel">

@@ -5,7 +5,8 @@ import Modal from './Modal';
 
 const api = window.xiAPI;
 
-const STEPS = ['welcome', 'paths', 'profile', 'finish'];
+const STEPS_PRIVATE = ['welcome', 'paths', 'servers', 'profile', 'finish'];
+const STEPS_RETAIL = ['welcome', 'paths', 'profile', 'finish'];
 
 function SetupWizard({ config, updateConfig, onComplete }) {
   const [step, setStep] = useState(0);
@@ -23,6 +24,13 @@ function SetupWizard({ config, updateConfig, onComplete }) {
   const [xiloaderDownloading, setXiloaderDownloading] = useState(false);
   const [xiloaderProgress, setXiloaderProgress] = useState({ percent: 0, detail: '' });
   const [xiloaderMsg, setXiloaderMsg] = useState('');
+  const [serverList, setServerList] = useState([]);
+  const [serverListLoading, setServerListLoading] = useState(false);
+  const [serverListError, setServerListError] = useState('');
+  const [expandedCat, setExpandedCat] = useState(null);
+
+  const STEPS = profileType === 'private' ? STEPS_PRIVATE : STEPS_RETAIL;
+  const currentStep = STEPS[step];
 
   useEffect(() => {
     if (!api?.onAshitaInstallProgress) return;
@@ -39,6 +47,25 @@ function SetupWizard({ config, updateConfig, onComplete }) {
     });
     return unsub;
   }, []);
+
+  // Fetch server list when entering the servers step
+  useEffect(() => {
+    if (currentStep !== 'servers' || serverList.length > 0) return;
+    if (!api?.fetchServerList) return;
+    setServerListLoading(true);
+    api.fetchServerList().then(result => {
+      if (result.success) {
+        setServerList(result.categories);
+        if (result.categories.length > 0) setExpandedCat(0);
+      } else {
+        setServerListError(typeof result.error === 'string' ? result.error : 'Failed to load server list');
+      }
+      setServerListLoading(false);
+    }).catch(() => {
+      setServerListError('Failed to load server list');
+      setServerListLoading(false);
+    });
+  }, [currentStep, serverList.length]);
 
   // Check if xiloader exists when ashitaPath changes
   useEffect(() => {
@@ -102,6 +129,8 @@ function SetupWizard({ config, updateConfig, onComplete }) {
   const createProfile = async () => {
     if (!profileName.trim()) return;
     const name = profileName.trim();
+    if (/[\\/:*?"<>|]/.test(name)) return;
+    if (name.length > 60) return;
     const xiloaderPath = config.xiloaderPath || (ashitaPath + '\\xiloader');
     await api.saveProfile(ashitaPath, name, DEFAULT_PROFILE_INI(name, profileType, serverHost, serverPort, xiloaderPath, config.hairpin, config.loginUser, config.loginPass, config.ffxiPath));
     updateConfig('activeProfile', name);
@@ -113,8 +142,6 @@ function SetupWizard({ config, updateConfig, onComplete }) {
     updateConfig('setupComplete', true);
     onComplete();
   };
-
-  const currentStep = STEPS[step];
 
   const handleSkip = () => { updateConfig('setupComplete', true); onComplete(); };
 
@@ -205,6 +232,65 @@ function SetupWizard({ config, updateConfig, onComplete }) {
             </>
           )}
 
+          {currentStep === 'servers' && (
+            <>
+              <h3 className="wizard-step-title">Browse Private Servers</h3>
+              <p className="wizard-step-desc">
+                Here are some community FFXI private servers. Click a server to select it, then enter the connection address on the next step. Check the server's website or Discord for the correct address.
+              </p>
+              {serverListLoading && <p className="wizard-step-desc">Loading server list...</p>}
+              {serverListError && <p className="wizard-status-msg wizard-status-msg-error">{serverListError}</p>}
+              {serverList.map((cat, ci) => (
+                <div key={cat.name} className="wizard-server-category">
+                  <button
+                    className={`wizard-server-cat-header ${expandedCat === ci ? 'expanded' : ''}`}
+                    onClick={() => setExpandedCat(expandedCat === ci ? null : ci)}
+                  >
+                    <span>{expandedCat === ci ? '▾' : '▸'}</span>
+                    <span>{cat.name}</span>
+                    <span className="wizard-server-cat-count">{cat.servers.length}</span>
+                  </button>
+                  {expandedCat === ci && cat.servers.map(server => (
+                    <div
+                      key={server.name}
+                      className={`wizard-server-row ${profileName === server.name ? 'selected' : ''} ${server.note ? 'wizard-server-incompatible' : ''}`}
+                      onClick={() => {
+                        if (server.note) return; // Don't select incompatible servers
+                        setProfileName(server.name);
+                        if (server.address) setServerHost(server.address);
+                        if (server.port) setServerPort(server.port);
+                      }}
+                    >
+                      <div className="wizard-server-name">
+                        {server.name}
+                        {server.address && <span className="wizard-server-address">{server.address}{server.port ? ':' + server.port : ''}</span>}
+                        {server.note && <span className="wizard-server-note">{server.note}</span>}
+                      </div>
+                      <div className="wizard-server-details">
+                        <span>{server.expansion}</span>
+                        <span>Rates: {server.rates}</span>
+                        {server.dualBox && server.dualBox !== 'No' && server.dualBox !== '?' && <span>Multi-box</span>}
+                      </div>
+                      <div className="wizard-server-links">
+                        {server.website && (
+                          <button className="btn btn-ghost btn-xs" onClick={e => { e.stopPropagation(); api?.openExternal(server.website); }}>Website</button>
+                        )}
+                        {server.discord && (
+                          <button className="btn btn-ghost btn-xs" onClick={e => { e.stopPropagation(); api?.openExternal(server.discord); }}>Discord</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {profileName && serverHost && (
+                <div className="wizard-server-selected">
+                  Selected: <strong>{profileName}</strong> — server address: <strong>{serverHost}{serverPort ? ':' + serverPort : ''}</strong>
+                </div>
+              )}
+            </>
+          )}
+
           {currentStep === 'profile' && (
             <>
               <h3 className="wizard-step-title">Create Your First Profile</h3>
@@ -231,6 +317,7 @@ function SetupWizard({ config, updateConfig, onComplete }) {
                 <>
                   <div className="wizard-field">
                     <label>Server Address</label>
+                    <span className="field-hint">The connection address from your server's website or Discord (not the website URL)</span>
                     <input type="text" value={serverHost} onChange={e => setServerHost(e.target.value)} placeholder="play.myserver.com" />
                   </div>
                   <div className="wizard-field">

@@ -140,6 +140,7 @@ contextBridge.exposeInMainWorld('xiAPI', {
 
   // Server status
   checkServerStatus: (host, port) => ipcRenderer.invoke('check-server-status', host, port),
+  fetchServerList: () => ipcRenderer.invoke('fetch-server-list'),
 
   // Backup / Restore
   backupAshitaConfig: () => ipcRenderer.invoke('backup-ashita-config'),

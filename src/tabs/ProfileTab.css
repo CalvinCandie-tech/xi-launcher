@@ -329,6 +329,12 @@
   padding: 8px 12px;
 }
 
+.profile-error {
+  color: #ff6b6b;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
 /* Profile editor */
 .profile-editor {
   flex: 1;

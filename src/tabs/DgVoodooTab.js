@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './DgVoodooTab.css';
 
 const api = window.xiAPI;
@@ -76,6 +76,7 @@ function DgVoodooTab({ config, updateConfig }) {
   const [cachedPath, setCachedPath] = useState('');
 
   const ffxiPath = config?.ffxiPath || '';
+  const settingsLoaded = useRef(false);
 
   const checkStatus = useCallback(async () => {
     if (!api || !ffxiPath) return;
@@ -88,12 +89,23 @@ function DgVoodooTab({ config, updateConfig }) {
   // Load saved dgVoodoo settings from conf file on mount
   useEffect(() => {
     if (!api?.readDgVoodooConf || !ffxiPath) return;
+    settingsLoaded.current = false;
     api.readDgVoodooConf(ffxiPath).then(result => {
       if (result?.success && result.settings) {
         setSettings(prev => ({ ...prev, ...result.settings }));
       }
+      settingsLoaded.current = true;
     });
   }, [ffxiPath]);
+
+  // Auto-save conf whenever settings change (after initial load)
+  useEffect(() => {
+    if (!settingsLoaded.current || !ffxiPath || !dgvStatus.confExists) return;
+    const timer = setTimeout(() => {
+      api.writeDgVoodooConf(ffxiPath, settings);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [settings, ffxiPath, dgvStatus.confExists]);
 
   // Check Defender exclusion status (requires admin — only run on explicit user action)
   const checkDefenderExclusion = useCallback(async () => {

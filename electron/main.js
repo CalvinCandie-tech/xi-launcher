@@ -126,6 +126,33 @@ function friendlyError(e, context) {
   }
   return `${context || 'Operation'} failed: ${msg}`;
 }
+
+// Retry an async operation with exponential backoff
+async function retryAsync(fn, { retries = 3, delay = 1000, label = 'Download' } = {}) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (e) {
+      if (attempt === retries) throw e;
+      const wait = delay * Math.pow(2, attempt - 1);
+      console.log(`[retry] ${label} attempt ${attempt} failed: ${e.message}. Retrying in ${wait}ms...`);
+      await new Promise(r => setTimeout(r, wait));
+    }
+  }
+}
+
+// Check available disk space (returns bytes free on the drive containing targetPath)
+function checkDiskSpace(targetPath) {
+  try {
+    const drive = path.parse(path.resolve(targetPath)).root;
+    const stdout = require('child_process').execSync(
+      `powershell -Command "(Get-PSDrive ${drive[0]}).Free"`,
+      { timeout: 5000 }
+    ).toString().trim();
+    return parseInt(stdout, 10) || 0;
+  } catch { return Infinity; } // If check fails, don't block the operation
+}
+
 // Parse a URL to determine mod download type
 function parseModUrl(url) {
   try {
@@ -212,8 +239,8 @@ function createTray() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 750,
+    width: 1200,
+    height: 800,
     minWidth: 900,
     minHeight: 600,
     frame: false,
@@ -273,6 +300,20 @@ app.whenReady().then(async () => {
   // Ensure runtime directory exists
   if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
 
+  // Clean up stale temp files from previous sessions
+  try {
+    const tmpDir = os.tmpdir();
+    const stalePatterns = ['xi-launcher-update', 'ashita-v4', 'xipivot-', 'custom-mod-', 'hdpack-', 'addon-', 'xi-launcher-backup-', 'xi-addon-backup-'];
+    const entries = fs.readdirSync(tmpDir);
+    for (const entry of entries) {
+      if (stalePatterns.some(p => entry.startsWith(p))) {
+        try { fs.rmSync(path.join(tmpDir, entry), { recursive: true, force: true }); } catch {}
+      }
+    }
+  } catch (e) {
+    console.error('Temp cleanup failed:', e.message);
+  }
+
   // Remove Mark of the Web Zone.Identifier from exe/dll files so Windows doesn't block them
   try {
     execSync(`powershell -Command "Get-ChildItem -Path '${runtimeDir.replace(/'/g, "''")}' -Recurse -Include '*.exe','*.dll' | Unblock-File"`, { timeout: 15000 });
@@ -310,6 +351,17 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => app.quit());
+
+// Clean up active downloads on quit
+app.on('before-quit', () => {
+  for (const [key, dl] of Object.entries(activeDownloads)) {
+    try {
+      if (dl.response) dl.response.destroy();
+      if (dl.file) dl.file.destroy();
+    } catch {}
+    delete activeDownloads[key];
+  }
+});
 
 function registerIPC() {
   // Window controls
@@ -524,7 +576,7 @@ function registerIPC() {
       const tmpFile = path.join(tmpDir, 'update.zip');
 
       // Download the zip
-      await new Promise((resolve, reject) => {
+      await retryAsync(() => new Promise((resolve, reject) => {
         const download = (url) => {
           https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
             if (res.statusCode === 302 || res.statusCode === 301) {
@@ -549,11 +601,11 @@ function registerIPC() {
               }
             });
             res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
+            res.on('error', (err) => { file.destroy(); reject(err); });
           }).on('error', reject);
         };
         download(downloadUrl);
-      });
+      }), { label: 'Update download' });
 
       sendProgress(75, 'Extracting update...');
 
@@ -843,10 +895,12 @@ function registerIPC() {
 
   // Install Ashita v4 from GitHub
   ipcMain.handle('install-ashita-v4', async (_, destPath) => {
-
-
-
     try {
+      // Check disk space (Ashita v4 needs ~200 MB)
+      const freeBytes = checkDiskSpace(destPath);
+      if (freeBytes < 200 * 1024 * 1024) {
+        return { success: false, error: `Not enough disk space. At least 200 MB free is required, but only ${(freeBytes / 1048576).toFixed(0)} MB available.` };
+      }
       const sendProgress = (percent, detail) => {
         try { mainWindow?.webContents?.send('ashita-install-progress', percent, detail); } catch {}
       };
@@ -860,7 +914,7 @@ function registerIPC() {
 
       sendProgress(5, 'Downloading Ashita v4 from GitHub...');
 
-      await new Promise((resolve, reject) => {
+      await retryAsync(() => new Promise((resolve, reject) => {
         const download = (url) => {
           https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
             if (res.statusCode === 302 || res.statusCode === 301) {
@@ -885,11 +939,11 @@ function registerIPC() {
               }
             });
             res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
+            res.on('error', (err) => { file.destroy(); reject(err); });
           }).on('error', reject);
         };
         download(zipUrl);
-      });
+      }), { label: 'Ashita v4 download' });
 
       sendProgress(60, 'Extracting...');
 
@@ -939,33 +993,47 @@ function registerIPC() {
     }
   });
 
-  // Watch for game process to exit, then notify renderer
-  let gameExitPoll = null;
-  let gameExitTimeout = null;
-  const watchForGameExit = (processName) => {
-    // Clear any previous watcher
-    if (gameExitPoll) clearInterval(gameExitPoll);
-    if (gameExitTimeout) clearTimeout(gameExitTimeout);
-    // Wait a few seconds for the process to start
-    gameExitTimeout = setTimeout(() => {
+
+  // Watch for game process to exit, then notify renderer (per-profile watchers for multi-box)
+  const gameExitWatchers = new Map();
+  const watchForGameExit = (processName, profileKey) => {
+    const existing = gameExitWatchers.get(profileKey);
+    if (existing) {
+      if (existing.poll) clearInterval(existing.poll);
+      if (existing.timeout) clearTimeout(existing.timeout);
+    }
+    const watcher = {};
+    watcher.timeout = setTimeout(() => {
       let pollCount = 0;
-      gameExitPoll = setInterval(() => {
+      watcher.poll = setInterval(() => {
         pollCount++;
-        if (pollCount > 720) { clearInterval(gameExitPoll); gameExitPoll = null; return; } // max 1 hour
+        if (pollCount > 720) { clearInterval(watcher.poll); gameExitWatchers.delete(profileKey); return; } // max 1 hour
         exec(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, (err, stdout) => {
           if (err || !stdout.toLowerCase().includes(processName.toLowerCase())) {
-            clearInterval(gameExitPoll);
-            gameExitPoll = null;
+            clearInterval(watcher.poll);
+            gameExitWatchers.delete(profileKey);
             try { mainWindow?.webContents?.send('game-exited'); } catch {}
           }
         });
       }, 5000);
     }, 10000);
+    gameExitWatchers.set(profileKey, watcher);
   };
+
+  // Clean up game watchers on quit
+  app.on('before-quit', () => {
+    for (const [key, w] of gameExitWatchers) {
+      if (w.poll) clearInterval(w.poll);
+      if (w.timeout) clearTimeout(w.timeout);
+    }
+    gameExitWatchers.clear();
+  });
 
   // Game launch
   ipcMain.handle('launch-game', async (_, opts) => {
     try {
+      const profileKey = opts.profileName || opts.serverName || 'default';
+
       if (opts.useXiloader) {
         if (!opts.xiloaderPath) return { error: 'xiloader path is not set. Go to Profiles → Installation Paths and set the xiloader path.' };
         const exe = path.join(opts.xiloaderPath, 'xiloader.exe');
@@ -986,7 +1054,7 @@ function registerIPC() {
           });
         });
         // Watch for game exit and notify renderer
-        watchForGameExit('pol.exe');
+        watchForGameExit('pol.exe', profileKey);
         return { success: true, message: 'xiloader launched' };
       } else {
         if (!opts.ashitaPath) return { error: 'Ashita path is not set. Go to Profiles → Installation Paths and set the Ashita v4 path.' };
@@ -1007,7 +1075,7 @@ function registerIPC() {
           });
         });
         // Watch for game exit and notify renderer
-        watchForGameExit('pol.exe');
+        watchForGameExit('pol.exe', profileKey);
         return { success: true, message: `Ashita launched with profile: ${opts.profileName}` };
       }
     } catch (e) {
@@ -1066,7 +1134,7 @@ function registerIPC() {
 
       sendProgress(10, 'Downloading xiloader.exe...');
 
-      await new Promise((resolve, reject) => {
+      await retryAsync(() => new Promise((resolve, reject) => {
         const download = (url) => {
           https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
             if (res.statusCode === 302 || res.statusCode === 301) return download(res.headers.location);
@@ -1080,11 +1148,11 @@ function registerIPC() {
               if (total > 0) sendProgress(10 + Math.round((received / total) * 85), `Downloading... ${(received / 1024).toFixed(0)} KB`);
             });
             res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
+            res.on('error', (err) => { file.destroy(); reject(err); });
           }).on('error', reject);
         };
         download(downloadUrl);
-      });
+      }), { label: 'xiloader download' });
 
       sendProgress(100, 'xiloader.exe downloaded successfully');
       store.set('xiloaderPath', targetDir);
@@ -1442,7 +1510,7 @@ function registerIPC() {
 
       // Step 3: Download the ZIP to temp
       const tmpZip = path.join(os.tmpdir(), 'xipivot-latest.zip');
-      await new Promise((resolve, reject) => {
+      await retryAsync(() => new Promise((resolve, reject) => {
         const download = (url) => {
           https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
             if (res.statusCode === 302 || res.statusCode === 301) {
@@ -1451,10 +1519,11 @@ function registerIPC() {
             const file = fs.createWriteStream(tmpZip);
             res.pipe(file);
             file.on('finish', () => { file.close(); resolve(); });
+            res.on('error', (err) => { file.destroy(); reject(err); });
           }).on('error', reject);
         };
         download(asset.browser_download_url);
-      });
+      }), { label: 'XIPivot download' });
 
       // Step 4: Extract
       const tmpExtract = path.join(os.tmpdir(), 'xipivot-extract');
@@ -1686,9 +1755,10 @@ function registerIPC() {
 
   // LargeAddressAware — check if exe has LAA flag set
   ipcMain.handle('check-laa', async (_, exePath) => {
+    let fd;
     try {
       if (!fs.existsSync(exePath)) return { exists: false, patched: false };
-      const fd = fs.openSync(exePath, 'r');
+      fd = fs.openSync(exePath, 'r');
       const buf2 = Buffer.alloc(2);
       const buf4 = Buffer.alloc(4);
 
@@ -1718,6 +1788,7 @@ function registerIPC() {
       fs.closeSync(fd);
       return { exists: true, patched };
     } catch (e) {
+      if (fd !== undefined) try { fs.closeSync(fd); } catch {}
       return { exists: false, patched: false, error: e.message };
     }
   });
@@ -1744,8 +1815,9 @@ function registerIPC() {
       };
 
       // Try direct write first
+      let fd;
       try {
-        const fd = fs.openSync(exePath, 'r+');
+        fd = fs.openSync(exePath, 'r+');
         const data = Buffer.alloc(fs.fstatSync(fd).size);
         fs.readSync(fd, data, 0, data.length, 0);
         patchBuffer(data, enable);
@@ -1753,6 +1825,7 @@ function registerIPC() {
         fs.closeSync(fd);
         return { success: true, patched: enable };
       } catch (directErr) {
+        if (fd !== undefined) try { fs.closeSync(fd); } catch {}
         if (directErr.code !== 'EPERM' && directErr.code !== 'EACCES') throw directErr;
       }
 
@@ -1830,10 +1903,13 @@ function registerIPC() {
 
   // Download and install an HD mod pack from GitHub
   ipcMain.handle('install-hdpack', async (_, ashitaPath, packName, repoUrl, subdir) => {
-
-
-
     try {
+      // Check disk space (HD packs can be 500MB+)
+      const freeBytes = checkDiskSpace(ashitaPath);
+      const minRequired = 500 * 1024 * 1024; // 500 MB minimum
+      if (freeBytes < minRequired) {
+        return { success: false, error: `Not enough disk space. At least 500 MB free is required, but only ${(freeBytes / 1048576).toFixed(0)} MB available.` };
+      }
       // Determine DATs root from pivot.ini or default
       const pivotIni = path.join(ashitaPath, 'config', 'pivot', 'pivot.ini');
       let datsRoot = path.join(ashitaPath, 'polplugins', 'DATs');
@@ -1912,7 +1988,7 @@ function registerIPC() {
               file.end();
               file.on('finish', resolve);
             });
-            res.on('error', (err) => { delete activeDownloads[packName]; reject(err); });
+            res.on('error', (err) => { file.destroy(); delete activeDownloads[packName]; reject(err); });
           }).on('error', (err) => { delete activeDownloads[packName]; reject(err); });
         };
         download(zipUrl);
@@ -2225,7 +2301,7 @@ function registerIPC() {
               file.end();
               file.on('finish', resolve);
             });
-            res.on('error', (err) => { delete activeDownloads[packName]; reject(err); });
+            res.on('error', (err) => { file.destroy(); delete activeDownloads[packName]; reject(err); });
           }).on('error', (err) => { delete activeDownloads[packName]; reject(err); });
         };
         download(asset.browser_download_url);
@@ -2361,7 +2437,7 @@ function registerIPC() {
       const tmpZip = path.join(os.tmpdir(), asset.name);
 
       // Download the zip
-      await new Promise((resolve, reject) => {
+      await retryAsync(() => new Promise((resolve, reject) => {
         const download = (url) => {
           https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
             if (res.statusCode === 302 || res.statusCode === 301) {
@@ -2386,11 +2462,11 @@ function registerIPC() {
               }
             });
             res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
+            res.on('error', (err) => { file.destroy(); reject(err); });
           }).on('error', reject);
         };
         download(asset.browser_download_url);
-      });
+      }), { label: 'dgVoodoo download' });
 
       sendProgress(70, 'Extracting...');
 
@@ -2611,7 +2687,6 @@ function registerIPC() {
         'ColorSpace                           = appdriven',
         `FullscreenAttributes                 = ${fullscreenAttr === 'fake' ? 'fake' : ''}`,
         `FPSLimit                             = ${fpsLimit}`,
-        `dgVoodooWatermark                    = ${watermark ? 'true' : 'false'}`,
         '',
         '[DirectX]',
         'DisableAndPassThru                   = false',
@@ -2626,6 +2701,7 @@ function registerIPC() {
         'DisableAltEnterToToggleScreenMode    = true',
         `ForceVerticalSync                    = ${vsync ? 'true' : 'false'}`,
         `FastVideoMemoryAccess                = ${fastVram ? 'true' : 'false'}`,
+        `dgVoodooWatermark                    = ${watermark ? 'true' : 'false'}`,
         '',
         '[DirectXExt]',
         `DepthBuffersBitDepth                 = ${depthBuffer}`,
@@ -2643,6 +2719,17 @@ function registerIPC() {
       for (const dir of dirs) {
         fs.writeFileSync(path.join(dir, 'dgVoodoo.conf'), conf, 'utf8');
       }
+
+      // Also update the global dgVoodoo conf in AppData (overrides per-game settings)
+      try {
+        const globalConf = path.join(process.env.APPDATA || '', 'dgVoodoo', 'dgVoodoo.conf');
+        if (fs.existsSync(globalConf)) {
+          let global = fs.readFileSync(globalConf, 'utf-8');
+          global = global.replace(/^(\s*dgVoodooWatermark\s*=\s*).+$/mi, `$1${watermark ? 'true' : 'false'}`);
+          fs.writeFileSync(globalConf, global, 'utf8');
+        }
+      } catch { /* non-critical */ }
+
       return { success: true };
     } catch (e) {
       return { success: false, error: friendlyError(e, 'Saving dgVoodoo config') };
@@ -2805,7 +2892,7 @@ function registerIPC() {
       if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
       const tmpFile = path.join(os.tmpdir(), asset.name);
 
-      await new Promise((resolve, reject) => {
+      await retryAsync(() => new Promise((resolve, reject) => {
         const download = (url) => {
           https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
             if (res.statusCode === 302 || res.statusCode === 301) {
@@ -2830,11 +2917,11 @@ function registerIPC() {
               }
             });
             res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
+            res.on('error', (err) => { file.destroy(); reject(err); });
           }).on('error', reject);
         };
         download(asset.browser_download_url);
-      });
+      }), { label: 'ReShade download' });
 
       sendProgress(70, 'Extracting...');
 
@@ -3117,7 +3204,7 @@ function registerIPC() {
 
       // Download ZIP to temp
       const tmpZip = path.join(os.tmpdir(), `addon-${addonName}.zip`);
-      await new Promise((resolve, reject) => {
+      await retryAsync(() => new Promise((resolve, reject) => {
         const download = (url) => {
           const mod = url.startsWith('https') ? https : require('http');
           mod.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
@@ -3143,11 +3230,11 @@ function registerIPC() {
               }
             });
             res.on('end', () => { file.end(); file.on('finish', resolve); });
-            res.on('error', reject);
+            res.on('error', (err) => { file.destroy(); reject(err); });
           }).on('error', reject);
         };
         download(zipUrl);
-      });
+      }), { label: `Addon ${addonName} download` });
 
       sendProgress(65, 'Extracting...');
 
@@ -3349,7 +3436,7 @@ function registerIPC() {
         }
       }
 
-      store.set('addonUpdateLastCheck', now);
+      store.set('addonUpdateLastCheck', Date.now());
       return { updates };
     } catch (e) {
       console.error('[check-addon-updates]', e.message);
@@ -3381,6 +3468,127 @@ function registerIPC() {
         resolve({ online: false, latency: null });
       });
     });
+  });
+
+  // Fetch community server list from XiPrivateServers GitHub
+  // Known xiloader connection addresses for private servers
+  const SERVER_ADDRESSES = {
+    'Eden': { host: 'play.edenxi.com' },
+    'Omega': { host: 'lobby.ffxi.party', port: '54230' },
+    'Demiurge': { host: 'demiurge.pw' },
+    'Era': { host: '8.26.94.111' },
+    'Gaia XI': { host: 'login.gaiaxi.com' },
+    'HorizonXI': { host: '', note: 'Uses custom HorizonXI launcher — not compatible with xiloader' },
+    'LevelDown': { host: 'ffxileveldown.ddns.net' },
+    'LevelDown 75': { host: 'ffxileveldown75.ddns.net' },
+    'Nasomi': { host: 'na.nasomi.com' },
+    'Supernova': { host: 'login.supernovaffxi.com' },
+    'Tabula Rasa': { host: 'login.tabularasaxi.com' },
+    'Valhalla': { host: 'login.valhalla.group' },
+    'DSP Old School': { host: 'oldschool.dspt.info' },
+    'Omicron': { host: 'login.omicronffxi.com' },
+    'ff11sf': { host: 'update.ff11sf.com' },
+    'CatsEyeXI': { host: 'server.catseyexi.com' },
+    'Caldera': { host: 'ffxicaldera.myddns.me' },
+    'Tonberry': { host: 'play.tonberryffxi.com' },
+    'Made to Raid': { host: 'ffxi.madetoraid.com' },
+    'Phoenix XI': { host: '', note: 'Launching 2026 — check phoenix-xi.com for connection details' },
+  };
+
+  // Extra servers not listed on XiPrivateServers SERVERS.md
+  const EXTRA_SERVERS = [
+    { name: 'CatsEyeXI', category: '75 - Custom Content', website: 'https://catseyexi.com', discord: 'https://discord.gg/catseyexi', expansion: 'WotG', rates: 'Custom', moveSpeed: '', features: ['Sync', 'Trusts', 'Multi'] },
+    { name: 'Caldera', category: '99 - Custom Content', website: 'https://www.ffxi-caldera.net', discord: '', expansion: 'SoA', rates: 'Custom', moveSpeed: '', features: ['Sync', 'Trusts', 'Multi'] },
+    { name: 'Tonberry', category: '75 - Custom Content', website: 'http://www.tonberryffxi.com', discord: '', expansion: 'ToAU', rates: 'Custom', moveSpeed: '', features: [] },
+    { name: 'Made to Raid', category: '99 - Custom Content', website: 'https://madetoraid.com', discord: '', expansion: 'SoA', rates: 'Custom', moveSpeed: '', features: ['Multi'] },
+    { name: 'Phoenix XI', category: '75 - Retail-Like', website: 'https://phoenix-xi.com', discord: '', expansion: 'ToAU', rates: '1x', moveSpeed: '', features: [] },
+  ];
+
+  ipcMain.handle('fetch-server-list', async () => {
+    try {
+      const raw = await retryAsync(() => new Promise((resolve, reject) => {
+        https.get({
+          hostname: 'raw.githubusercontent.com',
+          path: '/XiPrivateServers/Servers/main/SERVERS.md',
+          headers: { 'User-Agent': 'XI-Launcher' }
+        }, (res) => {
+          if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => resolve(data));
+          res.on('error', reject);
+        }).on('error', reject);
+      }), { label: 'Server list fetch' });
+
+      // Parse markdown tables into structured data
+      const categories = [];
+      let currentCategory = null;
+      for (const line of raw.split('\n')) {
+        // Category headers: "# Level Cap: 75 - Retail-Like"
+        const catMatch = line.match(/^#\s+Level Cap:\s*(.+)/);
+        if (catMatch) {
+          currentCategory = { name: catMatch[1].trim(), servers: [] };
+          categories.push(currentCategory);
+          continue;
+        }
+        // Table rows (skip header and separator rows)
+        if (!currentCategory || !line.startsWith('|') || line.includes('---') || line.includes('Name')) continue;
+        const cells = line.split('|').map(c => c.trim()).filter(Boolean);
+        if (cells.length < 8 || cells[0] === 'N/A') continue;
+        // Parse name + URL: [Name](url)
+        const nameMatch = cells[0].match(/\[([^\]]+)\]\(([^)]+)\)/);
+        const discordMatch = cells[1].match(/\[Join\]\(([^)]+)\)/);
+        const serverName = nameMatch ? nameMatch[1] : cells[0];
+        // Try category-qualified lookup first (e.g. "LevelDown 75"), then plain name
+        const capMatch = currentCategory.name.match(/^(\d+)/);
+        const qualifiedName = capMatch ? `${serverName} ${capMatch[1]}` : serverName;
+        const known = SERVER_ADDRESSES[qualifiedName] || SERVER_ADDRESSES[serverName] || {};
+        currentCategory.servers.push({
+          name: serverName,
+          website: nameMatch ? nameMatch[2] : '',
+          discord: discordMatch ? discordMatch[1] : '',
+          expansion: cells[2].replace(/<br\s*\/?>/gi, ' ').replace(/[_()]/g, '').trim(),
+          rates: cells[3],
+          moveSpeed: cells[4],
+          levelSync: cells[5].includes('heavy_check_mark'),
+          trusts: cells[6].includes('heavy_check_mark'),
+          dualBox: cells[7].replace(/<br\s*\/?>/gi, ' ').replace(/[_()]/g, '').replace(/:heavy_check_mark:/g, 'Yes').replace(/:x:/g, 'No').replace(/:question:/g, '?').trim(),
+          address: known.host || '',
+          port: known.port || '',
+          note: known.note || ''
+        });
+      }
+      // Merge extra servers not on XiPrivateServers list
+      const existingNames = new Set();
+      for (const cat of categories) for (const s of cat.servers) existingNames.add(s.name);
+      for (const extra of EXTRA_SERVERS) {
+        if (existingNames.has(extra.name)) continue;
+        const known = SERVER_ADDRESSES[extra.name] || {};
+        let targetCat = categories.find(c => c.name === extra.category);
+        if (!targetCat) {
+          targetCat = { name: extra.category, servers: [] };
+          categories.push(targetCat);
+        }
+        targetCat.servers.push({
+          name: extra.name,
+          website: extra.website,
+          discord: extra.discord,
+          expansion: extra.expansion,
+          rates: extra.rates,
+          moveSpeed: extra.moveSpeed,
+          levelSync: extra.features.includes('Sync'),
+          trusts: extra.features.includes('Trusts'),
+          dualBox: extra.features.includes('Multi') ? 'Yes' : '',
+          address: known.host || '',
+          port: known.port || '',
+          note: known.note || ''
+        });
+      }
+
+      return { success: true, categories: categories.filter(c => c.servers.length > 0) };
+    } catch (e) {
+      return { success: false, error: friendlyError(e, 'Fetching server list') };
+    }
   });
 
   // One-Click Backup — creates a ZIP of config/boot, scripts, and addon settings

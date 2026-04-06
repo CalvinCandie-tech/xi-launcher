@@ -10,6 +10,7 @@ import XIPivotTab from './tabs/XIPivotTab';
 import DgVoodooTab from './tabs/DgVoodooTab';
 import ReShadeTab from './tabs/ReShadeTab';
 import PluginsTab from './tabs/PluginsTab';
+import ServerBrowserTab from './tabs/ServerBrowserTab';
 // ScriptEditorTab is now embedded in ProfileTab
 import SetupWizard from './components/SetupWizard';
 import UpdateModal from './components/UpdateModal';
@@ -593,6 +594,7 @@ function App() {
       case 'xipivot': return <XIPivotTab {...tabProps} onSettingsSaved={() => saveCurrentProfileSettings(config)} />;
       case 'dgvoodoo': return <DgVoodooTab {...tabProps} />;
       case 'reshade': return <ReShadeTab {...tabProps} onNavigate={guardedSetActiveTab} />;
+      case 'servers': return <ServerBrowserTab {...tabProps} />;
       default: return null;
     }
   };

@@ -11,6 +11,7 @@ const tabs = [
   { id: 'xipivot', label: 'XIPivot', icon: '◎' },
   { id: 'dgvoodoo', label: 'dgVoodoo', icon: '◆' },
   { id: 'reshade', label: 'ReShade', icon: '✦' },
+  { id: 'servers', label: 'Servers', icon: '⊕' },
   { id: 'settings', label: 'Settings', icon: '⚙' }
 ];
 
