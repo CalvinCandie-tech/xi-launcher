@@ -6,6 +6,7 @@ const api = window.xiAPI;
 
 function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, launchLog, updateInfo, onManualUpdateCheck, onSkipVersion, onDismissUpdate, onShowWizard }) {
   const [status, setStatus] = useState({ ashita: false, ffxi: false, xiloader: false, profileCount: 0 });
+  const [startupWarnings, setStartupWarnings] = useState([]);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [profileType, setProfileType] = useState('private');
@@ -35,6 +36,11 @@ function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, laun
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [profileDropdownOpen]);
+
+  useEffect(() => {
+    if (!api?.getStartupWarnings) return;
+    api.getStartupWarnings().then(w => { if (w?.length) setStartupWarnings(w); });
+  }, []);
 
   useEffect(() => {
     if (!api?.onAshitaInstallProgress) return;
@@ -192,6 +198,16 @@ function HomeTab({ config, updateConfig, onNavigate, onLaunch, isLaunching, laun
 
       {/* Right side — status panel */}
       <div className="home-right">
+        {/* Startup warnings */}
+        {startupWarnings.length > 0 && (
+          <div className="home-panel-section home-warning-banner">
+            {startupWarnings.map((w, i) => (
+              <div key={i} className="home-warning-text">{w}</div>
+            ))}
+            <button className="home-update-dismiss" onClick={() => setStartupWarnings([])} aria-label="Dismiss">✕</button>
+          </div>
+        )}
+
         {/* Update notification */}
         {updateInfo && updateDlStatus === '' && (
           <div className="home-panel-section home-update-banner">

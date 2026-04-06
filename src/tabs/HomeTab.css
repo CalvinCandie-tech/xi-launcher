@@ -337,6 +337,20 @@
   transition: all 0.15s;
 }
 
+.home-panel-section.home-warning-banner {
+  background: rgba(200, 64, 64, 0.08);
+  border-color: rgba(200, 64, 64, 0.3);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.home-warning-text {
+  font-size: var(--text-xs);
+  color: var(--red);
+  flex: 1;
+}
+
 .home-panel-section.home-update-error {
   background: rgba(200, 64, 64, 0.06);
   border-color: rgba(200, 64, 64, 0.25);

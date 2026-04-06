@@ -534,11 +534,12 @@ function DgVoodooTab({ config, updateConfig }) {
                         Reset to Recommended
                       </button>
                       {dgvStatus.cplExists && (
-                        <button className="btn btn-ghost" onClick={launchCpl}>
+                        <button className="btn btn-ghost" onClick={launchCpl} title="Changes made in dgVoodooCpl will be overwritten next time you click Save Configuration">
                           Launch dgVoodooCpl.exe
                         </button>
                       )}
                     </div>
+                    <p className="dgv-cpl-note">Note: Saving configuration above will overwrite any changes made directly in dgVoodooCpl.exe.</p>
                     {confMsg && (
                       <p className={`dgv-status-msg ${confStatus === 'done' ? 'success' : 'error'}`}>
                         {confMsg}
@@ -917,6 +918,7 @@ function DgVoodooTab({ config, updateConfig }) {
                     className="btn btn-ghost"
                     onClick={launchCpl}
                     disabled={!dgvStatus.cplExists}
+                    title="Changes made in dgVoodooCpl will be overwritten next time you click Save Configuration"
                   >
                     Launch dgVoodooCpl.exe
                   </button>

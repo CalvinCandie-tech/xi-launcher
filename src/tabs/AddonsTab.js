@@ -424,9 +424,22 @@ function AddonsTab({ config, updateConfig, onCheckAddonUpdates }) {
     // Block enabling uninstalled community addons (those with a repo that haven't been downloaded)
     if (catalogEntry?.repo && !installedAddons.includes(scriptName)) return;
     const isEnabled = enabledAddons.includes(scriptName);
-    const newEnabled = isEnabled
-      ? enabledAddons.filter(a => a !== scriptName)
-      : [...enabledAddons, scriptName];
+    let newEnabled;
+    if (isEnabled) {
+      newEnabled = enabledAddons.filter(a => a !== scriptName);
+    } else {
+      newEnabled = [...enabledAddons, scriptName];
+      // Auto-enable dependencies (e.g. gdifonts for HitPoints/balloon)
+      if (catalogEntry?.deps) {
+        for (const depName of catalogEntry.deps) {
+          const depEntry = ADDON_CATALOGUE.find(a => a.name === depName);
+          const depScript = (depEntry?.installAs || depName).toLowerCase();
+          if (!newEnabled.includes(depScript)) {
+            newEnabled.push(depScript);
+          }
+        }
+      }
+    }
     setEnabledAddons(newEnabled);
     try {
       await saveAddonsToProfile(newEnabled);
@@ -875,7 +888,16 @@ function AddonsTab({ config, updateConfig, onCheckAddonUpdates }) {
                       </div>
                     </div>
                     <p className="addon-desc">{addon.description}</p>
-                    {addon.deps && <div className="addon-deps-note">Requires: {addon.deps.join(', ')}</div>}
+                    {addon.deps && (() => {
+                      const missingDeps = isEnabled ? addon.deps.filter(depName => {
+                        const depEntry = ADDON_CATALOGUE.find(a => a.name === depName);
+                        const depScript = (depEntry?.installAs || depName).toLowerCase();
+                        return !enabledAddons.includes(depScript);
+                      }) : [];
+                      return <div className={`addon-deps-note${missingDeps.length ? ' addon-deps-missing' : ''}`}>
+                        {missingDeps.length ? `Missing required: ${missingDeps.join(', ')}` : `Requires: ${addon.deps.join(', ')}`}
+                      </div>;
+                    })()}
                     {installing[addon.name] && (
                       <div className="addon-progress">
                         <div className="addon-progress-bar">

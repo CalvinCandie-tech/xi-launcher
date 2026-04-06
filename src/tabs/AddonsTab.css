@@ -499,6 +499,11 @@
   margin-bottom: 4px;
 }
 
+.addon-deps-missing {
+  color: var(--gold);
+  font-weight: 600;
+}
+
 .addons-recommendations {
   margin-bottom: 8px;
 }

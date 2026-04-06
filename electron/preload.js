@@ -136,6 +136,7 @@ contextBridge.exposeInMainWorld('xiAPI', {
   // System tray
   setMinimizeToTray: (enabled) => ipcRenderer.invoke('set-minimize-to-tray', enabled),
   getMinimizeToTray: () => ipcRenderer.invoke('get-minimize-to-tray'),
+  getStartupWarnings: () => ipcRenderer.invoke('get-startup-warnings'),
 
   // Server status
   checkServerStatus: (host, port) => ipcRenderer.invoke('check-server-status', host, port),

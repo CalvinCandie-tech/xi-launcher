@@ -529,6 +529,36 @@ function App() {
             setLaunchWarning({ missing, useXiloader });
             return;
           }
+
+          // Auto-enable missing addon dependencies before launch
+          const enabledAddons = [];
+          for (const line of scriptResult.content.split('\n')) {
+            const m = line.trim().match(/^\/addon\s+load\s+(\S+)/i);
+            if (m) enabledAddons.push(m[1].toLowerCase());
+          }
+          const depsToAdd = [];
+          for (const addonName of enabledAddons) {
+            const entry = ADDON_CATALOGUE.find(a => (a.installAs || a.name).toLowerCase() === addonName);
+            if (entry?.deps) {
+              for (const depName of entry.deps) {
+                const depEntry = ADDON_CATALOGUE.find(a => a.name === depName);
+                const depScript = (depEntry?.installAs || depName).toLowerCase();
+                if (!enabledAddons.includes(depScript) && !depsToAdd.includes(depScript)) {
+                  depsToAdd.push(depScript);
+                }
+              }
+            }
+          }
+          if (depsToAdd.length > 0) {
+            // Append missing deps to the script file
+            const lines = scriptResult.content.split('\n');
+            const lastAddonIdx = lines.reduce((acc, l, i) => /^\/addon\s+load/i.test(l.trim()) ? i : acc, -1);
+            const insertIdx = lastAddonIdx >= 0 ? lastAddonIdx + 1 : lines.length;
+            const depLines = depsToAdd.map(d => `/addon load ${d}`);
+            lines.splice(insertIdx, 0, ...depLines);
+            await api.writeFile(config.ashitaPath + '\\scripts\\' + scriptName, lines.join('\n'));
+            console.log('Auto-enabled addon dependencies:', depsToAdd.join(', '));
+          }
         }
       }
     } catch (e) {

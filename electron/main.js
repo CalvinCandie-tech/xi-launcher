@@ -112,6 +112,20 @@ function validateRegValue(value) {
 function escapePSString(str) {
   return String(str).replace(/'/g, "''").replace(/`/g, '``').replace(/\$/g, '`$').replace(/"/g, '`"');
 }
+// Detect permission/elevation errors and return a user-friendly message
+function friendlyError(e, context) {
+  const msg = e.message || String(e);
+  const code = e.code || '';
+  const isPermission = code === 'EPERM' || code === 'EACCES'
+    || /access.*(denied|is denied)/i.test(msg)
+    || /elevation/i.test(msg)
+    || /operation was canceled/i.test(msg)
+    || /canceled by the user/i.test(msg);
+  if (isPermission) {
+    return `${context || 'Operation'} failed — access denied. Try right-clicking XI Launcher and selecting "Run as administrator".`;
+  }
+  return `${context || 'Operation'} failed: ${msg}`;
+}
 // Parse a URL to determine mod download type
 function parseModUrl(url) {
   try {
@@ -172,6 +186,7 @@ function countFiles(dir) {
 }
 
 let mainWindow;
+const startupWarnings = [];
 let tray = null;
 let minimizeToTray = false;
 
@@ -258,6 +273,14 @@ app.whenReady().then(async () => {
   // Ensure runtime directory exists
   if (!fs.existsSync(runtimeDir)) fs.mkdirSync(runtimeDir, { recursive: true });
 
+  // Remove Mark of the Web Zone.Identifier from exe/dll files so Windows doesn't block them
+  try {
+    execSync(`powershell -Command "Get-ChildItem -Path '${runtimeDir.replace(/'/g, "''")}' -Recurse -Include '*.exe','*.dll' | Unblock-File"`, { timeout: 15000 });
+  } catch (e) {
+    console.error('Failed to unblock runtime files:', e.message);
+    startupWarnings.push('Could not unblock downloaded files — Windows may block Ashita or xiloader from running. Try right-clicking XI Launcher and selecting "Run as administrator".');
+  }
+
   await initStore();
 
   // Set default paths only if not already configured
@@ -303,6 +326,7 @@ function registerIPC() {
     return minimizeToTray;
   });
   ipcMain.handle('get-minimize-to-tray', () => minimizeToTray);
+  ipcMain.handle('get-startup-warnings', () => startupWarnings);
 
   // Store (with password encryption)
   ipcMain.handle('store-get', (_, key) => {
@@ -395,7 +419,7 @@ function registerIPC() {
       return { success: true };
     } catch (e) {
       console.error('[write-file]', e.message);
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Writing file') };
     }
   });
 
@@ -582,7 +606,7 @@ function registerIPC() {
       return { success: true };
     } catch (e) {
       sendProgress(0, '');
-      return { success: false, error: e.message || 'Update failed' };
+      return { success: false, error: friendlyError(e, 'App update') };
     }
   });
 
@@ -671,7 +695,7 @@ function registerIPC() {
       return { success: true };
     } catch (e) {
       console.error('[write-ffxi-registry]', e.message);
-      return { success: false, error: e.message || 'Access denied' };
+      return { success: false, error: friendlyError(e, 'Registry write') };
     }
   });
 
@@ -706,7 +730,7 @@ function registerIPC() {
       }
       return { success: false, error: 'No registry values found to backup' };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Backing up registry') };
     }
   });
 
@@ -955,8 +979,11 @@ function registerIPC() {
         if (opts.hairpin) args.push('--hairpin');
         const argStr = args.map(a => `'${escapePSString(a)}'`).join(',');
         const psCmd = `Start-Process -FilePath '${escapePSString(exe)}' ${argStr ? `-ArgumentList ${argStr}` : ''} -WorkingDirectory '${escapePSString(opts.xiloaderPath)}' -Verb RunAs`;
-        exec(`powershell -Command "${psCmd}"`, { timeout: 15000 }, (err) => {
-          if (err) console.error('Launch error:', err.message);
+        await new Promise((resolve, reject) => {
+          exec(`powershell -Command "${psCmd}"`, { timeout: 15000 }, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
         });
         // Watch for game exit and notify renderer
         watchForGameExit('pol.exe');
@@ -973,8 +1000,11 @@ function registerIPC() {
           ? `-ArgumentList '""${escapePSString(iniName)}""'`
           : `-ArgumentList '${escapePSString(iniName)}'`;
         const psCmd = `Start-Process -FilePath '${escapePSString(exe)}' ${argStr} -WorkingDirectory '${escapePSString(opts.ashitaPath)}' -Verb RunAs`;
-        exec(`powershell -Command "${psCmd}"`, { timeout: 15000 }, (err) => {
-          if (err) console.error('Launch error:', err.message);
+        await new Promise((resolve, reject) => {
+          exec(`powershell -Command "${psCmd}"`, { timeout: 15000 }, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
         });
         // Watch for game exit and notify renderer
         watchForGameExit('pol.exe');
@@ -1097,7 +1127,7 @@ function registerIPC() {
       execSync(`git clone https://github.com/LandSandBoat/xiloader.git`, { cwd: destPath, timeout: 120000 });
       return { success: true, repoDir, message: 'Repository cloned' };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Cloning xiloader') };
     }
   });
 
@@ -1137,7 +1167,7 @@ function registerIPC() {
       fs.copyFileSync(srcExe, destPath);
       return { success: true, destPath };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Copying xiloader') };
     }
   });
 
@@ -1221,7 +1251,7 @@ function registerIPC() {
       fs.writeFileSync(filePath, content, 'utf-8');
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Saving profile') };
     }
   });
 
@@ -1236,7 +1266,7 @@ function registerIPC() {
       }
       return { success: false, error: 'Profile file not found' };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Deleting profile') };
     }
   });
 
@@ -1264,7 +1294,7 @@ function registerIPC() {
       fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), 'utf-8');
       return { success: true, message: `Profile exported to ${result.filePath}` };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Exporting profile') };
     }
   });
 
@@ -1302,7 +1332,7 @@ function registerIPC() {
       return { success: true, name, message: `Profile "${name}" imported successfully` };
     } catch (e) {
       if (e instanceof SyntaxError) return { success: false, error: 'Invalid profile file — not valid JSON.' };
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Importing profile') };
     }
   });
 
@@ -1375,7 +1405,7 @@ function registerIPC() {
       fs.writeFileSync(iniPath, ini, 'utf-8');
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Writing XIPivot config') };
     }
   });
 
@@ -1456,7 +1486,7 @@ function registerIPC() {
         message: `XIPivot ${releaseData.tag_name || ''} installed to ${ashitaPath}`
       };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Installing XIPivot') };
     }
   });
 
@@ -1634,7 +1664,7 @@ function registerIPC() {
       sendProgress(100, 'Done!');
       return { success: true, name: modName, message: `${modName} installed to DATs folder` };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Installing custom mod') };
     }
   });
 
@@ -1650,7 +1680,7 @@ function registerIPC() {
       }
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Removing custom mod') };
     }
   });
 
@@ -1744,11 +1774,11 @@ function registerIPC() {
       const peOff = verify.readUInt32LE(0x3C);
       const chars = verify.readUInt16LE(peOff + 0x16);
       const isPatched = (chars & 0x20) !== 0;
-      if (isPatched !== enable) return { success: false, error: 'Patch did not apply — the file may be protected.' };
+      if (isPatched !== enable) return { success: false, error: 'Patch did not apply — the file may be protected. Try right-clicking XI Launcher and selecting "Run as administrator".' };
 
       return { success: true, patched: enable };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'LAA patch') };
     }
   });
 
@@ -1973,7 +2003,7 @@ function registerIPC() {
         message: `${packName} installed — ${fileCount} files extracted to ${destDir}`
       };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Installing HD pack') };
     }
   });
 
@@ -2072,7 +2102,7 @@ function registerIPC() {
         message: `${packName} installed — ${fileCount} files extracted to ${destDir}`
       };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Installing HD pack') };
     }
   });
 
@@ -2263,7 +2293,7 @@ function registerIPC() {
         message: `${packName} installed — ${fileCount} files extracted to ${destDir}`
       };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Installing HD pack') };
     }
   });
 
@@ -2399,10 +2429,15 @@ function registerIPC() {
   // Helper: get all directories where dgVoodoo files should be placed
   // dgVoodoo D3D8.dll must be next to the exe that creates the Direct3D8 device.
   // With Ashita+xiloader, that's the xiloader dir (xiloader.exe process loads d3d8).
-  // We also place in FFXI dir and bootloader for standalone/pol.exe launches.
+  // dgVoodoo D3D8.dll is loaded by pol.exe from the FFXI install directory,
+  // regardless of whether the game is launched via Ashita, xiloader, or PlayOnline.
   function getDgVoodooTargetDirs(ffxiPath) {
-    const dirs = [];
-    if (ffxiPath) dirs.push(ffxiPath);
+    return ffxiPath ? [ffxiPath] : [];
+  }
+
+  // For removal, also sweep bootloader/xiloader dirs to clean up legacy scattered files.
+  function getDgVoodooCleanupDirs(ffxiPath) {
+    const dirs = ffxiPath ? [ffxiPath] : [];
     const ashitaPath = store?.get('ashitaPath');
     if (ashitaPath) {
       const bootDir = path.join(ashitaPath, 'bootloader');
@@ -2450,7 +2485,7 @@ function registerIPC() {
 
       return { success: true, message: `Files copied to: ${copied.join(', ')}` };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Copying dgVoodoo files') };
     }
   });
 
@@ -2515,7 +2550,7 @@ function registerIPC() {
       }
       return { success: false };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Reading dgVoodoo config') };
     }
   });
 
@@ -2576,6 +2611,7 @@ function registerIPC() {
         'ColorSpace                           = appdriven',
         `FullscreenAttributes                 = ${fullscreenAttr === 'fake' ? 'fake' : ''}`,
         `FPSLimit                             = ${fpsLimit}`,
+        `dgVoodooWatermark                    = ${watermark ? 'true' : 'false'}`,
         '',
         '[DirectX]',
         'DisableAndPassThru                   = false',
@@ -2589,7 +2625,6 @@ function registerIPC() {
         `AppControlledScreenMode              = true`,
         'DisableAltEnterToToggleScreenMode    = true',
         `ForceVerticalSync                    = ${vsync ? 'true' : 'false'}`,
-        `dgVoodooWatermark                    = ${watermark ? 'true' : 'false'}`,
         `FastVideoMemoryAccess                = ${fastVram ? 'true' : 'false'}`,
         '',
         '[DirectXExt]',
@@ -2610,7 +2645,7 @@ function registerIPC() {
       }
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Saving dgVoodoo config') };
     }
   });
 
@@ -2627,7 +2662,7 @@ function registerIPC() {
       spawn(cplPath, [], { cwd: path.dirname(cplPath), detached: true, stdio: 'ignore' }).unref();
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Launching dgVoodooCpl') };
     }
   });
 
@@ -2675,7 +2710,7 @@ function registerIPC() {
       if (!ffxiPath) return { success: false, error: 'FFXI path not set' };
       validateStoredFfxiPath(ffxiPath);
       const files = ['D3D8.dll', 'dgVoodoo.conf', 'dgVoodooCpl.exe'];
-      const dirs = getDgVoodooTargetDirs(ffxiPath);
+      const dirs = getDgVoodooCleanupDirs(ffxiPath);
       for (const dir of dirs) {
         for (const f of files) {
           const fp = path.join(dir, f);
@@ -2684,7 +2719,7 @@ function registerIPC() {
       }
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Removing dgVoodoo') };
     }
   });
 
@@ -2856,7 +2891,7 @@ function registerIPC() {
 
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Installing ReShade') };
     }
   });
 
@@ -2879,7 +2914,7 @@ function registerIPC() {
       }
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Toggling ReShade') };
     }
   });
 
@@ -2946,7 +2981,7 @@ function registerIPC() {
 
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Saving ReShade config') };
     }
   });
 
@@ -3011,7 +3046,7 @@ function registerIPC() {
 
       return { success: true, effects };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Reading ReShade config') };
     }
   });
 
@@ -3230,7 +3265,7 @@ function registerIPC() {
 
       return { success: true, message: `${addonName} installed — ${fileCount} files` };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Installing addon') };
     }
   });
 
@@ -3242,7 +3277,7 @@ function registerIPC() {
       fs.cpSync(src, dest, { recursive: true, force: true });
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Copying files') };
     }
   });
 
@@ -3263,7 +3298,7 @@ function registerIPC() {
       }
       return { success: true, message: `${addonName} uninstalled.` };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Uninstalling addon') };
     }
   });
 
@@ -3395,7 +3430,7 @@ function registerIPC() {
 
       return { success: true, message: `Backup saved to ${filePath}` };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Backing up config') };
     }
   });
 
@@ -3453,7 +3488,7 @@ function registerIPC() {
 
       return { success: true, message: 'Backup restored successfully. Restart the launcher to apply changes.' };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: friendlyError(e, 'Restoring backup') };
     }
   });
 

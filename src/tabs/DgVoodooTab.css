@@ -636,6 +636,13 @@
   color: var(--red);
 }
 
+.dgv-cpl-note {
+  font-size: 11px;
+  color: var(--gold-dim);
+  margin-top: 6px;
+  font-style: italic;
+}
+
 /* ── Verify section ── */
 .dgv-verify-list {
   display: flex;
