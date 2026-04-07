@@ -3229,8 +3229,8 @@ function registerIPC() {
         sendProgress(5, 'Downloading...');
       }
 
-      // Download ZIP to temp
-      const tmpZip = path.join(os.tmpdir(), `addon-${addonName}.zip`);
+      // Download ZIP to temp (sanitize slashes — installAs like 'libs/gdifonts' would create subdirs)
+      const tmpZip = path.join(os.tmpdir(), `addon-${addonName.replace(/[\\/]/g, '_')}.zip`);
       await retryAsync(() => new Promise((resolve, reject) => {
         const download = (url) => {
           const mod = url.startsWith('https') ? https : require('http');
@@ -3266,7 +3266,7 @@ function registerIPC() {
       sendProgress(65, 'Extracting...');
 
       // Extract to temp
-      const tmpExtract = path.join(os.tmpdir(), `addon-${addonName}-extract`);
+      const tmpExtract = path.join(os.tmpdir(), `addon-${addonName.replace(/[\\/]/g, '_')}-extract`);
       if (fs.existsSync(tmpExtract)) {
         fs.rmSync(tmpExtract, { recursive: true, force: true });
       }
