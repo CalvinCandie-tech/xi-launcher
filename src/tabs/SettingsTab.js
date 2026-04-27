@@ -267,6 +267,8 @@ const GAMEPAD_CONFIG_ROWS = [
   { label: 'Active Window /\nWindow Options', btnIdx: 8, comboIdx: 24 },
   { label: 'Main Menu', btnIdx: 6, comboIdx: 12 },
   { label: 'Autorun', btnIdx: 0, comboIdx: 2 },
+  { label: 'Heal / Rest', btnIdx: 4, comboIdx: null },
+  { label: 'First/Third Person', btnIdx: 2, comboIdx: null },
   { label: 'Macro Palette (Ctrl)', btnIdx: 1, comboIdx: 25 },
   { label: 'Macro Palette (Alt)', btnIdx: 3, comboIdx: 26 },
 ];
