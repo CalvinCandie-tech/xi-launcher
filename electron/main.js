@@ -610,7 +610,7 @@ function registerIPC() {
       const isSkipped = skippedVersions.includes(latest);
 
       // Find the zip asset for download
-      const zipAsset = data.assets?.find(a => a.name.endsWith('.zip'));
+      const zipAsset = data.assets?.find(a => a.name === 'XI-Launcher.zip');
       const downloadUrl = zipAsset?.browser_download_url || '';
 
       return {
@@ -1264,9 +1264,18 @@ function registerIPC() {
 
       // Try LandSandBoat releases first
       const releaseUrl = 'https://api.github.com/repos/LandSandBoat/xiloader/releases/latest';
-      const getJson = (url) => new Promise((resolve, reject) => {
+      const getJson = (url, depth = 0) => new Promise((resolve, reject) => {
+        if (depth > 10) return reject(new Error('Too many redirects'));
         https.get(url, { headers: { 'User-Agent': 'XI-Launcher', Accept: 'application/json' } }, (res) => {
-          if (res.statusCode === 302 || res.statusCode === 301) return getJson(res.headers.location).then(resolve, reject);
+          if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+            res.resume();
+            if (!res.headers.location) return reject(new Error('Redirect without Location header'));
+            return getJson(res.headers.location, depth + 1).then(resolve, reject);
+          }
+          if (res.statusCode && res.statusCode >= 400) {
+            res.resume();
+            return reject(new Error(`HTTP ${res.statusCode}`));
+          }
           let data = '';
           res.on('data', c => data += c);
           res.on('end', () => {
@@ -1710,16 +1719,29 @@ function registerIPC() {
       // Step 3: Download the ZIP to temp
       const tmpZip = path.join(os.tmpdir(), 'xipivot-latest.zip');
       await retryAsync(() => new Promise((resolve, reject) => {
-        const download = (url) => {
+        let settled = false;
+        const done = (fn) => (...args) => { if (!settled) { settled = true; fn(...args); } };
+        const okResolve = done(resolve);
+        const okReject = done(reject);
+        const download = (url, redirects = 0) => {
+          if (redirects > 10) return okReject(new Error('Too many redirects'));
           https.get(url, { headers: { 'User-Agent': 'XI-Launcher' } }, (res) => {
-            if (res.statusCode === 302 || res.statusCode === 301) {
-              return download(res.headers.location);
+            if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+              res.resume();
+              if (!res.headers.location) return okReject(new Error('Redirect without Location header'));
+              return download(res.headers.location, redirects + 1);
+            }
+            if (res.statusCode !== 200) {
+              res.resume();
+              return okReject(new Error(`Download failed with status ${res.statusCode}`));
             }
             const file = fs.createWriteStream(tmpZip);
-            res.pipe(file);
-            file.on('finish', () => { file.close(); resolve(); });
-            res.on('error', (err) => { file.destroy(); reject(err); });
-          }).on('error', reject);
+            file.on('error', (err) => { try { res.destroy(); } catch {} okReject(err); });
+            res.on('data', (chunk) => { if (!file.write(chunk)) res.pause(); });
+            file.on('drain', () => res.resume());
+            res.on('end', () => { file.end(); file.on('finish', okResolve); });
+            res.on('error', (err) => { file.destroy(); okReject(err); });
+          }).on('error', okReject);
         };
         download(asset.browser_download_url);
       }), { label: 'XIPivot download' });
@@ -2307,7 +2329,7 @@ function registerIPC() {
           moved = true;
         } catch (e) {
           // robocopy returns exit code 1 for success with files copied — only 8+ is a real error
-          if (e.status < 8) moved = true;
+          if (e.status !== null && e.status < 8) moved = true;
         }
       }
 
@@ -2415,7 +2437,7 @@ function registerIPC() {
           execSync(`robocopy "${innerDir}" "${destDir}" /E /MOVE /NFL /NDL /NJH /NJS /NS /NC /R:1 /W:0`, { timeout: 600000 });
           moved = true;
         } catch (e) {
-          if (e.status < 8) moved = true;
+          if (e.status !== null && e.status < 8) moved = true;
         }
       }
 
@@ -2624,7 +2646,7 @@ function registerIPC() {
           execSync(`robocopy "${sourceDir}" "${destDir}" /E /MOVE /NFL /NDL /NJH /NJS /NS /NC /R:1 /W:0`, { timeout: 600000 });
           moved = true;
         } catch (e) {
-          if (e.status < 8) moved = true;
+          if (e.status !== null && e.status < 8) moved = true;
         }
       }
 
@@ -3580,6 +3602,7 @@ function registerIPC() {
       // Determine destination: plugins/ for plugins, addons/ for addons
       const destBase = isPlugin ? 'plugins' : 'addons';
       const destDir = path.join(ashitaPath, destBase, addonName);
+      if (!isAllowedPath(destDir)) return { success: false, error: 'Invalid addon destination path' };
 
       // Back up user config files before overwriting
       const configBackupDir = path.join(os.tmpdir(), 'xi-addon-backup-' + addonName + '-' + Date.now());
@@ -3669,6 +3692,7 @@ function registerIPC() {
     try {
       const base = isPlugin ? 'plugins' : 'addons';
       const addonDir = path.join(ashitaPath, base, addonName);
+      if (!isAllowedPath(addonDir)) return { success: false, error: 'Invalid addon path' };
       if (!fs.existsSync(addonDir)) {
         return { success: false, error: 'Addon folder not found.' };
       }
